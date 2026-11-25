@@ -330,6 +330,49 @@ function Console.setupGlobals(game)
         Context.scene = AnimatorScene
         Context.scene:load()
     end
+
+    Console.env.plugin = {
+        list = function()
+            local PluginLoader = require('engine.core.plugin_loader')
+            Console.log("--- PLUGINS ---", {0, 1, 1})
+            if #PluginLoader.order == 0 then
+                Console.log("  (no plugins loaded)", {0.7, 0.7, 0.7})
+                return
+            end
+            for _, id in ipairs(PluginLoader.order) do
+                local p = PluginLoader.plugins[id]
+                local status = PluginLoader.enabled[id] and "enabled" or "disabled"
+                local kind = p.scene and "scene" or "rule"
+                Console.log(string.format("  %-14s [%s | %s] %s", id, status, kind, p.description or ""), {0.9, 0.9, 0.9})
+            end
+        end,
+        run = function(id)
+            local PluginLoader = require('engine.core.plugin_loader')
+            Console.isOpen = false
+            local ok, err = PluginLoader.launchScene(id)
+            if not ok then
+                Console.isOpen = true
+                Console.log("ERR: " .. tostring(err), {1, 0.2, 0.2})
+            end
+        end,
+        enable = function(id)
+            local PluginLoader = require('engine.core.plugin_loader')
+            local ok, err = PluginLoader.enable(id)
+            if ok then Console.log("Plugin enabled: " .. id, {0, 1, 0})
+            else Console.log("ERR: " .. tostring(err), {1, 0.2, 0.2}) end
+        end,
+        disable = function(id)
+            local PluginLoader = require('engine.core.plugin_loader')
+            local ok, err = PluginLoader.disable(id)
+            if ok then Console.log("Plugin disabled: " .. id, {1, 0.8, 0.2})
+            else Console.log("ERR: " .. tostring(err), {1, 0.2, 0.2}) end
+        end,
+        reload = function()
+            local PluginLoader = require('engine.core.plugin_loader')
+            PluginLoader.loadAll()
+            Console.log("Reloaded " .. #PluginLoader.order .. " plugin(s).", {0, 1, 0})
+        end
+    }
     
     Console.env.history = function()
         Console.log("--- COMMAND HISTORY ---", {0, 1, 1})
@@ -358,6 +401,8 @@ function Console.setupGlobals(game)
         section("TOOLS & EDITOR")
         row("edit",       "Toggle the Map Editor panel")
         row("anim",       "Open the Anim8tor sprite tool")
+        row("plugin.list","List loaded plugins & scenes")
+        row("plugin.run", "Usage: plugin.run <id> (e.g. tetris)")
         row("charc",      "Print the player stat table")
         row("clear",      "Clear all console logs")
 
@@ -410,7 +455,15 @@ function Console.execute(line, game)
     elseif line == "anim" then rewritten = "anim()"
     elseif line == "listmaps" then rewritten = "listmaps()"
     elseif line == "flag.list" then rewritten = "flag.list()"
+    elseif line == "plugin.list" then rewritten = "plugin.list()"
+    elseif line == "plugin.reload" then rewritten = "plugin.reload()"
+    elseif require('engine.core.plugin_loader').plugins[line] and require('engine.core.plugin_loader').plugins[line].scene then
+        rewritten = "plugin.run('" .. line .. "')"
     else
+        local pcmd, parg1 = line:match("^plugin%.([a-z]+) ([^ ]+)$")
+        if pcmd == "run" or pcmd == "enable" or pcmd == "disable" then
+            rewritten = "plugin." .. pcmd .. "('" .. parg1 .. "')"
+        end
         local fcmd, farg1, farg2 = line:match("^flag%.([a-z]+) ([^ ]+) *(.*)$")
         if fcmd == "get" then rewritten = "flag.get('" .. farg1 .. "')"
         elseif fcmd == "toggle" then rewritten = "flag.toggle('" .. farg1 .. "')"

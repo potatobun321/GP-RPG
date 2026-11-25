@@ -10,6 +10,7 @@ local Theme      = require('engine.core.theme')
 local Components = require('engine.ecs.components')
 local Editor     = require('tools.editor.editor')
 local StoryManager = require('engine.narrative.story_manager')
+local PluginLoader = require('engine.core.plugin_loader')
 
 local Game = {}
 
@@ -97,6 +98,7 @@ function Game:update(dt)
     Systems.AnimationSystem(dt)
     Systems.HoverSystem(dt)
     Systems.TokenSystem(dt)
+    PluginLoader.update(dt)
 
     local trans = Registry.get(self.playerId, "Transform")
     local tx = Camera.x
@@ -140,6 +142,8 @@ function Game:keypressed(key)
         Camera.isFreeCam = not Camera.isFreeCam
         Console.log("Free Camera: " .. tostring(Camera.isFreeCam), {0.5, 1, 0.5})
     end
+
+    PluginLoader.keypressed(key)
 
     if key == "e" then
         local trans = Registry.get(self.playerId, "Transform")
@@ -188,6 +192,7 @@ function Game:draw()
     Camera:detach()
 
     Systems.UISystem()
+    PluginLoader.draw()
     StoryManager.draw()
     Editor.draw(self.world)
     Console.draw()

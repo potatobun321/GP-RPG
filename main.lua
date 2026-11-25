@@ -16,6 +16,9 @@ function love.load()
     local PresetLoader = require('engine.core.preset_loader')
     PresetLoader.load("CoreRPG_MVP")
 
+    local PluginLoader = require('engine.core.plugin_loader')
+    PluginLoader.loadAll()
+
     local AnimationManager = require('engine.core.animation')
     AnimationManager.verifyAll(Factory)
 
