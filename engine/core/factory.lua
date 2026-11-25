@@ -78,26 +78,6 @@ function Factory.getCharacter(id)
     return Factory.characters[id]
 end
 
-function Factory.createTileEntity(gridX, gridY, size, typeId, customFlags)
-    local id = Registry.create()
-    local tpl = Factory.getTile(typeId)
-    
-    local px = gridX * size
-    local py = gridY * size
-    
-    local finalFlags = {}
-    for k, v in pairs(tpl.flags or {}) do finalFlags[k] = v end
-    if customFlags then
-        for k, v in pairs(customFlags) do finalFlags[k] = v end
-    end
-    
-    Registry.add(id, "Transform", Components.Transform(px, py, size, size))
-    Registry.add(id, "Renderable", Components.Renderable("tile", tpl.colorKey, tpl.texture, tpl.draw_style))
-    Registry.add(id, "TileData", { gridX=gridX, gridY=gridY, typeId=typeId, flags=finalFlags })
-    
-    return id
-end
-
 function Factory.createCharacterEntity(px, py, typeId)
     local id = Registry.create()
     local tpl = Factory.getCharacter(typeId)

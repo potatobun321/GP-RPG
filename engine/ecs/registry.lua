@@ -14,9 +14,10 @@ end
 function Registry.add(id, componentName, data)
     Registry.entities[id][componentName] = data or {}
     
+    local token = "|" .. componentName .. "|"
     local toRemove = {}
     for sig, _ in pairs(Registry.queryCache) do
-        if string.find(sig, componentName) then
+        if string.find("|" .. sig .. "|", token, 1, true) then
             table.insert(toRemove, sig)
         end
     end
@@ -31,8 +32,9 @@ function Registry.remove(id)
     
     local toRemove = {}
     for sig, _ in pairs(Registry.queryCache) do
+        local paddedSig = "|" .. sig .. "|"
         for compName, _ in pairs(comps) do
-            if string.find(sig, compName) then
+            if string.find(paddedSig, "|" .. compName .. "|", 1, true) then
                 toRemove[sig] = true
             end
         end

@@ -149,7 +149,7 @@ function Game:keypressed(key)
             
             local interactedWithEntity = false
             -- Gen 7 Interaction: Find entities in the same grid cell that are interactable
-            for _, id in pairs(Registry.entities) do
+            for id, _ in pairs(Registry.entities) do
                 if id ~= self.playerId then
                     local etrans = Registry.get(id, "Transform")
                     local eflags = Registry.get(id, "Flags")
