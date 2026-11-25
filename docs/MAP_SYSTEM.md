@@ -15,6 +15,11 @@ Map discovery is handled centrally by `engine/world/map_registry.lua`.
 - It hides system files (like `template`) from all UI.
 - **Why?** This ensures the Editor Link Popup, the Editor Map Selection Popup, and the Console's `listmaps` command all see the exact same accurate list of playable maps without hardcoding.
 
+## 2.5 Asset Caching (`Assets.getMapData`)
+Instead of parsing maps directly from the filesystem every time, the engine now routes all map loading through `engine/core/assets.lua`.
+- `Assets.getMapData(name)` centralizes the loading of JSON files and caches them.
+- This prevents hitching when transitioning between identical maps or reading map metadata for editor popups.
+
 ## 3. Map Lifecycle & Creation
 Map creation is an explicit, intentional action designed to prevent accidental blank maps.
 

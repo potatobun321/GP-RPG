@@ -9,5 +9,12 @@ return {
     Animator = function(animations, current) return {animations = animations or {}, current = current or "default"} end,
     Persistent = function() return {} end,
     State = function(initial) return {current = initial or "idle"} end,
-    Collider = function(w, h) return {w=w, h=h} end
+    Collider = function(w, h) return {w=w, h=h} end,
+
+    -- Gen 7 Vocabulary Components
+    Flags = function(flagsTable) return flagsTable or {} end,
+    Attributes = function(attrTable) return attrTable or {} end,
+    TokenQueue = function() return {} end,
+    ActiveComposite = function(compositeId) return {id = compositeId} end,
+    Reactions = function(reactionsTable) return reactionsTable or {} end
 }

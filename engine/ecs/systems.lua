@@ -36,12 +36,39 @@ function Systems.PlayerInputSystem(dt)
 end
 
 local SpatialHash = {}
+local SpatialCache = {}
 local CELL_SIZE = 64
 
-local function buildSpatialHash()
-    SpatialHash = {}
+local function addToHash(id, minC, maxC, minR, maxR)
+    for r = minR, maxR do
+        local row = SpatialHash[r]
+        if not row then row = {}; SpatialHash[r] = row end
+        for c = minC, maxC do
+            local cell = row[c]
+            if not cell then cell = {}; row[c] = cell end
+            cell[id] = true
+        end
+    end
+end
+
+local function removeFromHash(id, minC, maxC, minR, maxR)
+    for r = minR, maxR do
+        local row = SpatialHash[r]
+        if row then
+            for c = minC, maxC do
+                local cell = row[c]
+                if cell then cell[id] = nil end
+            end
+        end
+    end
+end
+
+local function updateSpatialHash()
     local colliders = Registry.queryCached("Transform|Collider", {"Transform", "Collider"})
+    local currentIds = {}
+    
     for _, cid in ipairs(colliders) do
+        currentIds[cid] = true
         local ct = Registry.get(cid, "Transform")
         local cc = Registry.get(cid, "Collider")
         
@@ -50,12 +77,21 @@ local function buildSpatialHash()
         local minRow = math.floor(ct.y / CELL_SIZE)
         local maxRow = math.floor((ct.y + cc.h) / CELL_SIZE)
         
-        for r = minRow, maxRow do
-            if not SpatialHash[r] then SpatialHash[r] = {} end
-            for c = minCol, maxCol do
-                if not SpatialHash[r][c] then SpatialHash[r][c] = {} end
-                table.insert(SpatialHash[r][c], cid)
-            end
+        local cache = SpatialCache[cid]
+        if not cache then
+            SpatialCache[cid] = {minCol, maxCol, minRow, maxRow}
+            addToHash(cid, minCol, maxCol, minRow, maxRow)
+        elseif cache[1] ~= minCol or cache[2] ~= maxCol or cache[3] ~= minRow or cache[4] ~= maxRow then
+            removeFromHash(cid, cache[1], cache[2], cache[3], cache[4])
+            cache[1], cache[2], cache[3], cache[4] = minCol, maxCol, minRow, maxRow
+            addToHash(cid, minCol, maxCol, minRow, maxRow)
+        end
+    end
+    
+    for cid, cache in pairs(SpatialCache) do
+        if not currentIds[cid] then
+            removeFromHash(cid, cache[1], cache[2], cache[3], cache[4])
+            SpatialCache[cid] = nil
         end
     end
 end
@@ -73,7 +109,7 @@ local function checkEntityCollision(id, nx, ny, w, h)
             for c = minCol, maxCol do
                 local cell = SpatialHash[r][c]
                 if cell then
-                    for _, cid in ipairs(cell) do
+                    for cid in pairs(cell) do
                         if cid ~= id and not checked[cid] then
                             checked[cid] = true
                             local ct = Registry.get(cid, "Transform")
@@ -92,7 +128,7 @@ local function checkEntityCollision(id, nx, ny, w, h)
 end
 
 function Systems.MovementSystem(dt, world)
-    buildSpatialHash()
+    updateSpatialHash()
     local entities = Registry.queryCached(SYS_QUERIES.Movement.sig, SYS_QUERIES.Movement.req)
     for _, id in ipairs(entities) do
         local trans = Registry.get(id, "Transform")
@@ -200,11 +236,21 @@ function Systems.AnimationSystem(dt)
 end
 
 -- Resolve an animation key using the fallback chain.
-local function resolveAnim(animations, ...)
-    for _, key in ipairs({...}) do
-        if animations[key] then return key end
-    end
+local function resolveAnim(animations, a, b, c, d)
+    if a and animations[a] then return a end
+    if b and animations[b] then return b end
+    if c and animations[c] then return c end
+    if d and animations[d] then return d end
     return nil
+end
+
+local AnimKeyCache = {}
+local function getAnimKey(action, facing)
+    if not AnimKeyCache[action] then AnimKeyCache[action] = {} end
+    if not AnimKeyCache[action][facing] then
+        AnimKeyCache[action][facing] = action .. "_" .. facing
+    end
+    return AnimKeyCache[action][facing]
 end
 
 function Systems.AnimationControllerSystem()
@@ -219,11 +265,11 @@ function Systems.AnimationControllerSystem()
 
         local target
         if action ~= "idle" then
-            target = resolveAnim(anim.animations, action .. "_" .. f, action, "default")
+            target = resolveAnim(anim.animations, getAnimKey(action, f), action, "default")
         elseif moving then
-            target = resolveAnim(anim.animations, "walk_" .. f, "walk", "default")
+            target = resolveAnim(anim.animations, getAnimKey("walk", f), "walk", "default")
         else
-            target = resolveAnim(anim.animations, "idle_" .. f, "idle", "walk_" .. f, "walk", "default")
+            target = resolveAnim(anim.animations, getAnimKey("idle", f), "idle", getAnimKey("walk", f), "walk", "default")
         end
 
         if target and target ~= anim.current then
@@ -234,6 +280,7 @@ function Systems.AnimationControllerSystem()
 end
 
 local tileBatches = {}
+local DEFAULT_COLOR = {1, 1, 1}
 
 function Systems.RenderSystem()
     local entities = Registry.queryCached(SYS_QUERIES.Render.sig, SYS_QUERIES.Render.req)
@@ -245,7 +292,7 @@ function Systems.RenderSystem()
         if r.type == "character" then
             local t    = Registry.get(id, "Transform")
             local anim = Registry.get(id, "Animator")
-            local c    = colors[r.colorKey] or {1, 1, 1}
+            local c    = colors[r.colorKey] or DEFAULT_COLOR
 
             if anim and anim.current and anim.animations[anim.current] and r.texture then
                 if not r.scaleX or not r.scaleY then
@@ -291,8 +338,72 @@ function Systems.UISystem()
         love.graphics.setColor(1, 1, 1, 1)
         love.graphics.rectangle("line", 20, 20, 200, 20)
 
-        -- Text (y=46, below the 20px-tall bar that starts at y=20)
         love.graphics.print("HP: " .. math.ceil(health.current) .. "/" .. health.max, 25, 46)
+    end
+end
+
+function Systems.HoverSystem(dt)
+    local mx, my = love.mouse.getPosition()
+    local Camera = require('engine.core.camera')
+    local wx, wy = Camera:screenToWorld(mx, my)
+
+    local entities = Registry.queryCached("Transform|Flags", {"Transform", "Flags"})
+    for _, id in ipairs(entities) do
+        local flags = Registry.get(id, "Flags")
+        if flags.is_hoverable then
+            local t = Registry.get(id, "Transform")
+            local isHovered = wx >= t.x and wx <= t.x + t.w and wy >= t.y and wy <= t.y + t.h
+            
+            if isHovered then
+                if not flags.is_hovered then
+                    flags.is_hovered = true
+                    local q = Registry.get(id, "TokenQueue")
+                    if q then table.insert(q, "TriggerOnHoverEnter") end
+                end
+            else
+                if flags.is_hovered then
+                    flags.is_hovered = false
+                    local q = Registry.get(id, "TokenQueue")
+                    if q then table.insert(q, "TriggerOnHoverExit") end
+                end
+            end
+        end
+    end
+end
+
+function Systems.TokenSystem(dt)
+    local qEntities = Registry.queryCached("TokenQueue", {"TokenQueue"})
+    for _, id in ipairs(qEntities) do
+        local q = Registry.get(id, "TokenQueue")
+        local rx = Registry.get(id, "Reactions")
+        local i = 1
+        while i <= #q do
+            local token = q[i]
+            
+            if rx and rx[token] then
+                -- Push reactions to the end of the queue
+                for _, reaction in ipairs(rx[token]) do
+                    table.insert(q, reaction)
+                end
+                table.remove(q, i)
+            elseif token == "PlayLoveInk" then
+                local attrs = Registry.get(id, "Attributes")
+                if attrs and attrs.story_id then
+                    local StoryManager = require('engine.narrative.story_manager')
+                    StoryManager.startStory(attrs.story_id)
+                end
+                table.remove(q, i)
+            elseif string.sub(token, 1, 17) == "ReplaceComposite_" then
+                local newComp = string.sub(token, 18)
+                local Factory = require('engine.core.factory')
+                local Console = require('engine.core.console')
+                Console.log("Mutating entity " .. id .. " -> " .. newComp, {0.8, 0.2, 0.8})
+                Factory.applyComposite(id, newComp)
+                break -- break loop because queue is wiped
+            else
+                table.remove(q, i)
+            end
+        end
     end
 end
 

@@ -165,4 +165,12 @@ function Camera:detach()
     love.graphics.pop()
 end
 
+function Camera:screenToWorld(sx, sy)
+    local hw = love.graphics.getWidth() / 2
+    local hh = love.graphics.getHeight() / 2
+    local wx = (sx - hw) / self.scale + self.x
+    local wy = (sy - hh) / self.scale + self.y
+    return wx, wy
+end
+
 return Camera

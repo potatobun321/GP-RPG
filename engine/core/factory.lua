@@ -131,4 +131,43 @@ function Factory.createCharacterEntity(px, py, typeId)
     return id
 end
 
+function Factory.applyComposite(id, compositeName)
+    local PresetLoader = require('engine.core.preset_loader')
+    local comp = PresetLoader.getComposite(compositeName)
+    if not comp then
+        print("Error: Composite not found: " .. compositeName)
+        return
+    end
+    
+    local Components = require('engine.ecs.components')
+    Registry.add(id, "ActiveComposite", Components.ActiveComposite(compositeName))
+    
+    if comp.Flags then
+        local flags = {}
+        for k, v in pairs(comp.Flags) do flags[k] = v end
+        Registry.add(id, "Flags", Components.Flags(flags))
+    else
+        Registry.add(id, "Flags", Components.Flags({}))
+    end
+    
+    if comp.Attributes then
+        local attrs = {}
+        for k, v in pairs(comp.Attributes) do attrs[k] = v end
+        Registry.add(id, "Attributes", Components.Attributes(attrs))
+    else
+        Registry.add(id, "Attributes", Components.Attributes({}))
+    end
+    
+    if comp.Reactions then
+        local rx = {}
+        for k, v in pairs(comp.Reactions) do rx[k] = v end
+        Registry.add(id, "Reactions", Components.Reactions(rx))
+    else
+        Registry.add(id, "Reactions", Components.Reactions({}))
+    end
+    
+    -- Clear TokenQueue on mutation
+    Registry.add(id, "TokenQueue", Components.TokenQueue())
+end
+
 return Factory

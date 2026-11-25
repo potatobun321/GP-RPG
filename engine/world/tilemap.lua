@@ -198,6 +198,8 @@ function Tilemap:isSolidPixel(px, py, w, h)
     return false
 end
 
+local DEFAULT_UNTEXTURED_COLOR = {1, 0, 1}
+
 function Tilemap:draw()
     if Context.mapDirty then
         self.tileBatches = {}
@@ -211,7 +213,8 @@ function Tilemap:draw()
                 
                 if tpl.texture then
                     if not self.tileBatches[tpl.texture] then
-                        self.tileBatches[tpl.texture] = love.graphics.newSpriteBatch(tpl.texture, 10000, "static")
+                        local maxSprites = math.max(1000, self.width * self.height)
+                        self.tileBatches[tpl.texture] = love.graphics.newSpriteBatch(tpl.texture, maxSprites, "static")
                     end
                     local scaleX = self.tileSize / tpl.texture:getWidth()
                     local scaleY = self.tileSize / tpl.texture:getHeight()
@@ -236,7 +239,7 @@ function Tilemap:draw()
     
     if self.untexturedTiles then
         for _, t in ipairs(self.untexturedTiles) do
-            local c = colors[t.tpl.colorKey] or {1, 0, 1}
+            local c = colors[t.tpl.colorKey] or DEFAULT_UNTEXTURED_COLOR
             if t.tpl.draw_style == "line" then
                 love.graphics.setColor(c[1], c[2], c[3], 0.2)
                 love.graphics.rectangle("line", t.px, t.py, self.tileSize, self.tileSize)

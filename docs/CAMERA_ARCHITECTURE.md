@@ -40,7 +40,11 @@ Camera Bounds exist to constrain the player's view to a specific region (like a 
 - **Void Allowed**: If the player zooms out to Level 0 in a tiny 4x4 room, the engine perfectly centers the room on the screen and renders the black void symmetrically around it. 
 - **No Zoom Hijacking**: Bounds are strictly forbidden from mutating the player's zoom state. 
 
-## 5. Console Commands
+## 4.5 Camera Decoupling & Safeties
+As of the latest stabilization pass, `Camera:update()` executes independently of the `Transform` component. If the player despawns, dies, or is temporarily removed from the Registry during a scripted sequence, the camera will safely freeze in its current location without crashing or halting the world update loop.
+
+## 5. Console Commands & Inputs
+- **`Shift + Z` (Gameplay)**: Instantly toggles the temporary override zoom while held.
 - **`zoom.set N`**: Sets the persistent Gameplay Zoom Level. Rejects floats. Accepts `0` through `6`.
 - **`zoom.temp N`**: Temporarily overrides the Gameplay camera zoom. Accepts `0` through `6`.
 - **`zoom.temp clear`**: Clears the temporary override and instantly restores the persistent `zoom.set` level as the active source of truth.

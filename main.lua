@@ -12,6 +12,9 @@ function love.load()
     _G.Event = require('engine.core.event')  -- kept global: event bus used across all modules
 
     Factory.load()
+    
+    local PresetLoader = require('engine.core.preset_loader')
+    PresetLoader.load("CoreRPG_MVP")
 
     local AnimationManager = require('engine.core.animation')
     AnimationManager.verifyAll(Factory)
@@ -30,6 +33,7 @@ function love.quit()
 end
 
 function love.update(dt)
+    dt = math.min(dt, 0.033) -- Cap dt to 30fps equivalent to prevent teleporting/stuttering during lag spikes
     local s = Context.scene
     if s and s.update then s:update(dt) end
 end

@@ -161,6 +161,89 @@ function Console.setupGlobals(game)
         Context.mapDirty = true
         Console.log("Resized tiles to " .. size, {0, 1, 0})
     end
+    Console.env.flag = {
+        list = function()
+            local FlagManager = require('engine.state.flag_manager')
+            Console.log("--- FLAGS ---", {0, 1, 1})
+            for k, v in pairs(FlagManager.list()) do
+                Console.log(k .. " = " .. tostring(v), {0.8, 0.8, 0.8})
+            end
+        end,
+        get = function(name)
+            if not name or name == "" then return Console.log("Usage: flag.get name", {1,0,0}) end
+            local FlagManager = require('engine.state.flag_manager')
+            Console.log(name .. " = " .. tostring(FlagManager.get(name)), {0.8, 0.8, 0.8})
+        end,
+        set = function(name, valStr)
+            if not name or name == "" or not valStr or valStr == "" then return Console.log("Usage: flag.set name value", {1,0,0}) end
+            local val = valStr
+            if valStr == "true" then val = true
+            elseif valStr == "false" then val = false
+            elseif tonumber(valStr) then val = tonumber(valStr) end
+            local FlagManager = require('engine.state.flag_manager')
+            FlagManager.set(name, val)
+            Console.log("Set " .. name .. " = " .. tostring(val), {0, 1, 0})
+        end,
+        toggle = function(name)
+            if not name or name == "" then return Console.log("Usage: flag.toggle name", {1,0,0}) end
+            local FlagManager = require('engine.state.flag_manager')
+            local newVal = FlagManager.toggle(name)
+            Console.log("Toggled " .. name .. " = " .. tostring(newVal), {0, 1, 0})
+        end
+    }
+
+    Console.env.token = {
+        inspect = function(name)
+            local PresetLoader = require('engine.core.preset_loader')
+            local p = PresetLoader.activePreset
+            if not p or not p.Tokens or not p.Tokens[name] then
+                return Console.log("Token not found: " .. tostring(name), {1,0,0})
+            end
+            local t = p.Tokens[name]
+            Console.log("--- TOKEN: " .. name .. " ---", {0, 1, 1})
+            Console.log("Description: " .. (t.description or "None"), {0.8, 0.8, 0.8})
+            Console.log("System: " .. (t.system or "Unknown"), {0.8, 0.8, 0.8})
+            if t.consumes and #t.consumes > 0 then
+                Console.log("Consumes:", {0.8, 0.8, 0.8})
+                for _, attr in ipairs(t.consumes) do
+                    Console.log("  - " .. attr, {0.8, 0.8, 0.8})
+                end
+            else
+                Console.log("Consumes: Nothing", {0.8, 0.8, 0.8})
+            end
+        end
+    }
+
+    Console.env.composite = {
+        inspect = function(name)
+            local PresetLoader = require('engine.core.preset_loader')
+            local p = PresetLoader.activePreset
+            if not p or not p.Composites or not p.Composites[name] then
+                return Console.log("Composite not found: " .. tostring(name), {1,0,0})
+            end
+            local c = p.Composites[name]
+            Console.log("--- COMPOSITE: " .. name .. " ---", {0, 1, 1})
+            if c.Flags then
+                Console.log("Flags:", {0.8, 0.8, 0.8})
+                for k, v in pairs(c.Flags) do
+                    Console.log("  " .. k .. " = " .. tostring(v), {0.8, 0.8, 0.8})
+                end
+            end
+            if c.Attributes then
+                Console.log("Attributes:", {0.8, 0.8, 0.8})
+                for k, v in pairs(c.Attributes) do
+                    Console.log("  " .. k .. " = " .. tostring(v), {0.8, 0.8, 0.8})
+                end
+            end
+            if c.Reactions then
+                Console.log("Reactions:", {0.8, 0.8, 0.8})
+                for trig, rx in pairs(c.Reactions) do
+                    Console.log("  " .. trig .. " -> " .. table.concat(rx, ", "), {0.8, 0.8, 0.8})
+                end
+            end
+        end
+    }
+
     Console.env.charc = function()
         if not game.playerId then return Console.log("No player", {1,0,0}) end
         local Registry = require('engine.ecs.registry')
@@ -298,6 +381,14 @@ function Console.setupGlobals(game)
 
         section("CAMERA & DISPLAY")
         row("theme.X",    "Set theme (neon/dracula/dark/light)")
+
+        section("NARRATIVE & STATE")
+        row("flag.list",  "List all active narrative flags")
+        row("flag.get",   "Usage: flag.get <name>")
+        row("flag.set",   "Usage: flag.set <name> <value>")
+        row("flag.toggle","Usage: flag.toggle <name>")
+        row("token.inspect", "Usage: token.inspect <name>")
+        row("composite.inspect", "Usage: composite.inspect <name>")
         row("zoom.set(N)",  "Set permanent default zoom")
         row("zoom.temp(N)", "Set active zoom (used with Shift+Z)")
         Console.log(" ", C)
@@ -318,20 +409,35 @@ function Console.execute(line, game)
     elseif line == "charc" then rewritten = "charc()"
     elseif line == "anim" then rewritten = "anim()"
     elseif line == "listmaps" then rewritten = "listmaps()"
+    elseif line == "flag.list" then rewritten = "flag.list()"
     else
-        local cmd, arg = line:match("^([%a_]+)%.([%w_]+)$")
+        local fcmd, farg1, farg2 = line:match("^flag%.([a-z]+) ([^ ]+) *(.*)$")
+        if fcmd == "get" then rewritten = "flag.get('" .. farg1 .. "')"
+        elseif fcmd == "toggle" then rewritten = "flag.toggle('" .. farg1 .. "')"
+        elseif fcmd == "set" then rewritten = "flag.set('" .. farg1 .. "', '" .. farg2 .. "')"
+        end
+        
+        local tcmd, targ1 = line:match("^token%.([a-z]+) ([^ ]+) *(.*)$")
+        if tcmd == "inspect" then rewritten = "token.inspect('" .. targ1 .. "')" end
+        
+        local ccmd, carg1 = line:match("^composite%.([a-z]+) ([^ ]+) *(.*)$")
+        if ccmd == "inspect" then rewritten = "composite.inspect('" .. carg1 .. "')" end
+        
+        if rewritten == line then
+            local cmd, arg = line:match("^([%a_]+)%.([%w_]+)$")
         if cmd and arg then
             -- Fix #24: accept both 'load' and 'loadmap' from the user
             if cmd == "load" or cmd == "loadmap" or cmd == "theme" or cmd == "save" or cmd == "newmap" or cmd == "deletemap" then
                 rewritten = (cmd == "load" and "loadmap" or cmd) .. "('" .. arg .. "')"
             elseif tonumber(arg) then
                 rewritten = cmd .. "(" .. arg .. ")"
+            else
+                local c, a1, a2 = line:match("^([%a_]+)%.([%w_]+)%.([%w_]+)$")
+                if c == "duplicatemap" then
+                    rewritten = "duplicatemap('" .. a1 .. "', '" .. a2 .. "')"
+                end
             end
-        else
-            local c, a1, a2 = line:match("^([%a_]+)%.([%w_]+)%.([%w_]+)$")
-            if c == "duplicatemap" then
-                rewritten = "duplicatemap('" .. a1 .. "', '" .. a2 .. "')"
-            end
+        end
         end
     end
     

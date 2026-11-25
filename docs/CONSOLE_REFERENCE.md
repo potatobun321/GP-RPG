@@ -42,7 +42,17 @@ The Map Registry manages all JSON and legacy LUA maps across the `maps/` and `co
 
 ---
 
-## 4. Keyboard Shortcuts
+## 4. Flag Management
+The new State Architecture manages global booleans/variables through `FlagManager`.
+
+- **`flag.list()`**: Prints all active flags and their current values to the console.
+- **`flag.get("name")`**: Returns the current value of the specified flag.
+- **`flag.set("name", true/false)`**: Sets the specified flag to a boolean value.
+- **`flag.toggle("name")`**: Inverts the specified boolean flag.
+
+---
+
+## 5. Keyboard Shortcuts
 
 **Global Actions:**
 - **`~` or `F1`**: Toggle Developer Console.
