@@ -14,6 +14,41 @@ local PluginLoader = require('engine.core.plugin_loader')
 
 local Game = {}
 
+function Game:spawnDefaultEntities()
+    if self.playerId and Registry.entities[self.playerId] then return end
+
+    self.playerId = Factory.createCharacterEntity(0, 0, "player")
+    Registry.add(self.playerId, "PlayerInput", Components.PlayerInput())
+
+    -- Add MVP NPC at -2, -1
+    self.npcId = Factory.createCharacterEntity(-64, -32, "player")
+    Factory.applyComposite(self.npcId, "InteractiveNPC")
+    local npcTrans = Registry.get(self.npcId, "Transform")
+    if npcTrans then
+        npcTrans.x = -64
+        npcTrans.y = -32
+    end
+
+    local pTrans = Registry.get(self.playerId, "Transform")
+    if pTrans then
+        Context.lastTeleportTile = {
+            x = math.floor((pTrans.x + pTrans.w/2) / self.world.tileSize),
+            y = math.floor((pTrans.y + pTrans.h/2) / self.world.tileSize)
+        }
+    end
+end
+
+function Game:clearDefaultEntities()
+    if self.playerId then
+        Registry.remove(self.playerId)
+        self.playerId = nil
+    end
+    if self.npcId then
+        Registry.remove(self.npcId)
+        self.npcId = nil
+    end
+end
+
 function Game:load()
     Registry.clear()
     StoryManager.init()
@@ -53,25 +88,7 @@ function Game:load()
         end)
     end
 
-    self.playerId = Factory.createCharacterEntity(0, 0, "player")
-    Registry.add(self.playerId, "PlayerInput", Components.PlayerInput())
-
-    -- Add MVP NPC at -2, -1
-    self.npcId = Factory.createCharacterEntity(-64, -32, "player")
-    Factory.applyComposite(self.npcId, "InteractiveNPC")
-    local npcTrans = Registry.get(self.npcId, "Transform")
-    if npcTrans then
-        npcTrans.x = -64
-        npcTrans.y = -32
-    end
-
-    local pTrans = Registry.get(self.playerId, "Transform")
-    if pTrans then
-        Context.lastTeleportTile = {
-            x = math.floor((pTrans.x + pTrans.w/2) / self.world.tileSize),
-            y = math.floor((pTrans.y + pTrans.h/2) / self.world.tileSize)
-        }
-    end
+    self:spawnDefaultEntities()
 
     -- Setup console globals once here (#23)
     Console.setupGlobals(self)
@@ -100,7 +117,7 @@ function Game:update(dt)
     Systems.TokenSystem(dt)
     PluginLoader.update(dt)
 
-    local trans = Registry.get(self.playerId, "Transform")
+    local trans = self.playerId and Registry.get(self.playerId, "Transform") or nil
     local tx = Camera.x
     local ty = Camera.y
     if trans then
@@ -145,7 +162,7 @@ function Game:keypressed(key)
 
     PluginLoader.keypressed(key)
 
-    if key == "e" then
+    if key == "e" and self.playerId then
         local trans = Registry.get(self.playerId, "Transform")
         if trans then
             local gx = math.floor((trans.x + trans.w/2) / self.world.tileSize)

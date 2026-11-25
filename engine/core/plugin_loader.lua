@@ -1,5 +1,5 @@
 -- engine/core/plugin_loader.lua
--- Drop-in plugin and rule loader (mirrors content/tiles/ discovery).
+-- Drop-in table-driven plugin and rule loader (mirrors content/tiles/ discovery).
 
 local Context = require('engine.core.context')
 
@@ -7,31 +7,48 @@ local PluginLoader = {
     plugins = {},       -- id -> plugin table
     order = {},         -- deterministic load order of ids
     enabled = {},       -- id -> boolean
+    activeMode = nil,   -- currently entered plugin id (if any)
+    savedState = {},    -- saved camera/entity state before entering a plugin
     tokens = {},        -- tokenName -> tokenDef (with optional execute fn)
     commands = {},      -- pluginId -> { cmdName -> fn }
 }
 
-local function buildAPI()
-    return {
-        Context = Context,
-        Registry = require('engine.ecs.registry'),
-        Event = _G.Event,
-        Flags = require('engine.state.flag_manager'),
-        exitToGame = function()
-            local SceneGame = require('scenes.game')
-            Context.scene = SceneGame
-            _G.game = SceneGame
-            love.graphics.setBackgroundColor(0, 0, 0)
-            local ok, f = pcall(love.graphics.newFont, "fonts/PressStart2P.ttf", 12)
-            if ok then love.graphics.setFont(f) end
-        end
+local PLUGIN_DEFAULTS = {
+    world = {
+        hideDefaultEntities = false,
+        cameraZoomLevel = nil,
     }
+}
+
+function PluginLoader.buildContext()
+    local game = require('scenes.game')
+    return {
+        world    = game and game.world or nil,
+        registry = require('engine.ecs.registry'),
+        camera   = require('engine.core.camera'),
+        flags    = require('engine.state.flag_manager'),
+        events   = _G.Event,
+        console  = require('engine.core.console'),
+        game     = game,
+        Context  = Context,
+    }
+end
+
+local function applyDefaults(plugin)
+    plugin.world = plugin.world or {}
+    for k, v in pairs(PLUGIN_DEFAULTS.world) do
+        if plugin.world[k] == nil then
+            plugin.world[k] = v
+        end
+    end
 end
 
 local function registerPlugin(plugin)
     if type(plugin) ~= "table" or not plugin.id then
         return false, "Plugin must return a table with an 'id' field."
     end
+
+    applyDefaults(plugin)
 
     local id = plugin.id
     PluginLoader.plugins[id] = plugin
@@ -117,12 +134,11 @@ function PluginLoader.loadAll()
         end
     end
 
-    -- Validate dependencies and register in sorted order
     local ids = {}
     for id in pairs(discovered) do table.insert(ids, id) end
     table.sort(ids)
 
-    local api = buildAPI()
+    local ctx = PluginLoader.buildContext()
     for _, id in ipairs(ids) do
         local plugin = discovered[id]
         local depsOk = true
@@ -142,12 +158,64 @@ function PluginLoader.loadAll()
         if depsOk then
             local ok, msg = registerPlugin(plugin)
             if ok and plugin.onLoad then
-                plugin.onLoad(api)
+                plugin.onLoad(ctx)
             elseif not ok then
                 print("PluginLoader: " .. tostring(msg))
             end
         end
     end
+end
+
+function PluginLoader.enter(id)
+    local plugin = PluginLoader.plugins[id]
+    if not plugin then return false, "Unknown plugin: " .. tostring(id) end
+
+    if PluginLoader.activeMode and PluginLoader.activeMode ~= id then
+        PluginLoader.exit(PluginLoader.activeMode)
+    end
+
+    local ctx = PluginLoader.buildContext()
+    PluginLoader.activeMode = id
+    PluginLoader.savedState = {
+        zoomLevel = ctx.camera.getZoom(),
+        hidDefaults = false,
+    }
+
+    if plugin.world.hideDefaultEntities and ctx.game and ctx.game.clearDefaultEntities then
+        ctx.game:clearDefaultEntities()
+        PluginLoader.savedState.hidDefaults = true
+    end
+
+    if plugin.world.cameraZoomLevel ~= nil then
+        ctx.camera.setZoom(plugin.world.cameraZoomLevel)
+    end
+
+    if plugin.onEnter then
+        plugin.onEnter(ctx)
+    end
+    return true
+end
+
+function PluginLoader.exit(id)
+    local targetId = id or PluginLoader.activeMode
+    if not targetId then return end
+    local plugin = PluginLoader.plugins[targetId]
+    local ctx = PluginLoader.buildContext()
+
+    if plugin and plugin.onExit then
+        plugin.onExit(ctx)
+    end
+
+    ctx.camera.clearTarget()
+    if PluginLoader.savedState.zoomLevel ~= nil then
+        ctx.camera.setZoom(PluginLoader.savedState.zoomLevel)
+    end
+    if PluginLoader.savedState.hidDefaults and ctx.game and ctx.game.spawnDefaultEntities then
+        ctx.game:spawnDefaultEntities()
+    end
+
+    PluginLoader.activeMode = nil
+    PluginLoader.savedState = {}
 end
 
 function PluginLoader.enable(id)
@@ -162,63 +230,32 @@ function PluginLoader.disable(id)
     return true
 end
 
-function PluginLoader.launchScene(id)
-    local plugin = PluginLoader.plugins[id]
-    if not plugin then return false, "Unknown plugin: " .. tostring(id) end
-    if not plugin.scene then return false, "Plugin '" .. id .. "' does not define a scene." end
-
-    local api = buildAPI()
-    local sceneWrapper = {}
-    for k, v in pairs(plugin.scene) do
-        sceneWrapper[k] = v
-    end
-    sceneWrapper._api = api
-
-    -- Wrap lifecycle methods so plugin scenes receive `api` cleanly if they accept it
-    if plugin.scene.load then
-        function sceneWrapper:load() return plugin.scene.load(self, api) end
-    end
-    if plugin.scene.update then
-        function sceneWrapper:update(dt) return plugin.scene.update(self, dt, api) end
-    end
-    if plugin.scene.draw then
-        function sceneWrapper:draw() return plugin.scene.draw(self, api) end
-    end
-    if plugin.scene.keypressed then
-        function sceneWrapper:keypressed(key) return plugin.scene.keypressed(self, key, api) end
-    end
-
-    Context.scene = sceneWrapper
-    if sceneWrapper.load then sceneWrapper:load() end
-    return true
-end
-
 function PluginLoader.update(dt)
-    local api = buildAPI()
+    local ctx = PluginLoader.buildContext()
     for _, id in ipairs(PluginLoader.order) do
         local plugin = PluginLoader.plugins[id]
         if PluginLoader.enabled[id] and plugin and plugin.onUpdate then
-            plugin.onUpdate(dt, api)
+            plugin.onUpdate(dt, ctx)
         end
     end
 end
 
 function PluginLoader.draw()
-    local api = buildAPI()
+    local ctx = PluginLoader.buildContext()
     for _, id in ipairs(PluginLoader.order) do
         local plugin = PluginLoader.plugins[id]
         if PluginLoader.enabled[id] and plugin and plugin.onDraw then
-            plugin.onDraw(api)
+            plugin.onDraw(ctx)
         end
     end
 end
 
 function PluginLoader.keypressed(key)
-    local api = buildAPI()
+    local ctx = PluginLoader.buildContext()
     for _, id in ipairs(PluginLoader.order) do
         local plugin = PluginLoader.plugins[id]
         if PluginLoader.enabled[id] and plugin and plugin.onKeypressed then
-            plugin.onKeypressed(key, api)
+            plugin.onKeypressed(key, ctx)
         end
     end
 end

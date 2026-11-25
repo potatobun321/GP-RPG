@@ -404,11 +404,7 @@ function Systems.TokenSystem(dt)
                 local PluginLoader = require('engine.core.plugin_loader')
                 local pToken = PluginLoader.tokens[token]
                 if pToken and pToken.execute then
-                    pToken.execute(id, {
-                        Registry = Registry,
-                        Event = _G.Event,
-                        Flags = require('engine.state.flag_manager'),
-                    })
+                    pToken.execute(id, PluginLoader.buildContext())
                 end
                 table.remove(q, i)
             end

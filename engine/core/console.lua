@@ -350,17 +350,24 @@ function Console.setupGlobals(game)
             local PluginLoader = require('engine.core.plugin_loader')
             local p = PluginLoader.plugins[id]
             Console.isOpen = false
-            if p and p.scene then
-                local ok, err = PluginLoader.launchScene(id)
+            if not p then
+                Console.isOpen = true
+                Console.log("ERR: Unknown plugin '" .. tostring(id) .. "'.", {1, 0.2, 0.2})
+                return
+            end
+            if PluginLoader.activeMode == id then
+                PluginLoader.exit(id)
+            elseif p.onEnter or (p.world and p.world.hideDefaultEntities) then
+                local ok, err = PluginLoader.enter(id)
                 if not ok then
                     Console.isOpen = true
                     Console.log("ERR: " .. tostring(err), {1, 0.2, 0.2})
                 end
-            elseif p and p.commands and p.commands.play then
+            elseif p.commands and p.commands.play then
                 p.commands.play()
             else
                 Console.isOpen = true
-                Console.log("ERR: Plugin '" .. tostring(id) .. "' has no runnable scene or play command.", {1, 0.2, 0.2})
+                Console.log("ERR: Plugin '" .. tostring(id) .. "' has no runnable mode.", {1, 0.2, 0.2})
             end
         end,
         enable = function(id)

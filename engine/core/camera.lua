@@ -8,6 +8,7 @@ local Camera = {}
 local State = {
     activeProfile = "gameplay",
     customBounds = nil,
+    lockTarget = nil, -- optional { x = number, y = number } set by plugins/cutscenes
     profiles = {
         gameplay = {
             x = 0, y = 0,
@@ -48,7 +49,7 @@ setmetatable(Camera, {
         return nil
     end,
     __newindex = function(t, k, v)
-        if k == "activeProfile" or k == "customBounds" or k == "profiles" then 
+        if k == "activeProfile" or k == "customBounds" or k == "profiles" or k == "lockTarget" then 
             State[k] = v 
             return 
         end
@@ -67,6 +68,23 @@ setmetatable(Camera, {
         rawset(t, k, v)
     end
 })
+
+function Camera.setTarget(x, y)
+    State.lockTarget = { x = x, y = y }
+end
+
+function Camera.clearTarget()
+    State.lockTarget = nil
+end
+
+function Camera.setZoom(lvl)
+    State.profiles.gameplay.zoomLevel = lvl
+    State.profiles.gameplay.targetZoomLevel = lvl
+end
+
+function Camera.getZoom()
+    return State.profiles.gameplay.zoomLevel
+end
 
 function Camera:update(dt, targetX, targetY, world)
     local Editor = Context.editor
@@ -114,6 +132,9 @@ function Camera:update(dt, targetX, targetY, world)
             if love.keyboard.isDown("right") then p.x = p.x + camSpeed * dt end
             if love.keyboard.isDown("up") then p.y = p.y - camSpeed * dt end
             if love.keyboard.isDown("down") then p.y = p.y + camSpeed * dt end
+        elseif State.lockTarget then
+            p.x = p.x + (State.lockTarget.x - p.x) * 8 * dt
+            p.y = p.y + (State.lockTarget.y - p.y) * 8 * dt
         else
             p.x = p.x + (targetX - p.x) * 5 * dt
             p.y = p.y + (targetY - p.y) * 5 * dt
