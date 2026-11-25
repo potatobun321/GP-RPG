@@ -150,9 +150,95 @@ function logic.saveToDisk()
     logic.bindAndSave()
 end
 
+local function bindTileAndSave()
+    local tileId = state.inputState.entityType.text
+    if tileId == "" then tileId = "water" end
+
+    local baseDir = love.filesystem.getSource()
+    local tilesDir = baseDir .. "/content/tiles"
+    local texRel = "content/tiles/" .. tileId .. ".png"
+
+    if state.fileData then
+        local fImg = io.open(tilesDir .. "/" .. tileId .. ".png", "wb")
+        if fImg then
+            fImg:write(state.fileData:getString())
+            fImg:close()
+        end
+    end
+
+    local tilePath = tilesDir .. "/" .. tileId .. ".lua"
+    local tileDef = nil
+    local chunk = loadfile(tilePath)
+    if chunk then
+        local ok, data = pcall(chunk)
+        if ok and type(data) == "table" then tileDef = data end
+    end
+    tileDef = tileDef or {
+        id = tileId,
+        name = tileId:gsub("^%l", string.upper),
+        colorKey = tileId,
+        draw_style = "fill",
+        flags = {}
+    }
+    tileDef.id = tileId
+    tileDef.texturePath = texRel
+
+    local anim = state.generatedFrameData
+    local lines = {
+        "-- content/tiles/" .. tileId .. ".lua",
+        "",
+        "return {",
+        string.format("    id = %q,", tileDef.id),
+        string.format("    name = %q,", tileDef.name or tileId),
+        string.format("    colorKey = %q,", tileDef.colorKey or tileId),
+        string.format("    draw_style = %q,", tileDef.draw_style or "fill"),
+        string.format("    texturePath = %q,", tileDef.texturePath),
+        string.format(
+            "    animation = { frameW=%d, frameH=%d, left=%d, top=%d, border=%d, frames=%q, duration=%s },",
+            anim.frameW, anim.frameH, anim.left, anim.top, anim.border, anim.frames, tostring(anim.duration)
+        ),
+        "    flags = {"
+    }
+    if tileDef.flags then
+        for k, v in pairs(tileDef.flags) do
+            if type(v) == "string" then
+                table.insert(lines, string.format("        %s = %q,", k, v))
+            elseif type(v) == "boolean" or type(v) == "number" then
+                table.insert(lines, string.format("        %s = %s,", k, tostring(v)))
+            end
+        end
+    end
+    table.insert(lines, "    }")
+    table.insert(lines, "}")
+
+    local f, err = io.open(tilePath, "w")
+    if not f then
+        state.errorMessage = "Failed to write tile: " .. tostring(err)
+        return
+    end
+    f:write(table.concat(lines, "\n"))
+    f:close()
+
+    state.errorMessage = ""
+    local Factory = require('engine.core.factory')
+    local Context = require('engine.core.context')
+    Factory.load()
+    Context.mapDirty = true
+
+    local Console = require('engine.core.console')
+    if Console then
+        Console.log("[Anim8tor] Saved tile animation -> content/tiles/" .. tileId .. ".lua", {0, 1, 0})
+    end
+end
+
 function logic.bindAndSave()
     if not state.generatedFrameData or not state.image then
         state.errorMessage = "Select frames first!"
+        return
+    end
+
+    if state.targetMode == "tile" then
+        bindTileAndSave()
         return
     end
 

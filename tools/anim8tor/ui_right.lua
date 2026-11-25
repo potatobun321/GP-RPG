@@ -133,50 +133,57 @@ function ui_right.draw()
     -- Header
     if state.font then love.graphics.setFont(state.font) end
     love.graphics.setColor(0.95, 0.95, 0.95)
-    love.graphics.print("BINDINGS", px + PAD, divY + PAD)
+    if state.targetMode == "tile" then
+        love.graphics.print("TILE ANIMATION", px + PAD, divY + PAD)
+        if state.fontSmall then love.graphics.setFont(state.fontSmall) end
+        love.graphics.setColor(0.6, 0.6, 0.6)
+        love.graphics.printf("Writes animation = {...} to:\ncontent/tiles/<Tile ID>.lua\nand spritesheet to <Tile ID>.png", px + PAD, divY + PAD + 32, prevW, "left")
+    else
+        love.graphics.print("BINDINGS", px + PAD, divY + PAD)
 
-    -- Compact hint below header
-    if state.fontSmall then love.graphics.setFont(state.fontSmall) end
-    love.graphics.setColor(0.6, 0.6, 0.6)
-    love.graphics.print("select slot → BIND & SAVE → animations.lua", px + PAD, divY + PAD + 22)
+        -- Compact hint below header
+        if state.fontSmall then love.graphics.setFont(state.fontSmall) end
+        love.graphics.setColor(0.6, 0.6, 0.6)
+        love.graphics.print("select slot → BIND & SAVE → animations.lua", px + PAD, divY + PAD + 22)
 
-    -- ── Template list ─────────────────────────────────────────────────────────
-    local lsY = listStartY()
+        -- ── Template list ─────────────────────────────────────────────────────
+        local lsY = listStartY()
 
-    for i, tmpl in ipairs(TEMPLATES) do
-        local ry      = lsY + (i - 1) * ROW_H
-        local rx      = px + PAD - 4
-        local rw      = PANEL_W - PAD * 2 + 8
-        local saved   = state.savedSlots[tmpl]
-        local hovered = (i == hoverIdx)
+        for i, tmpl in ipairs(TEMPLATES) do
+            local ry      = lsY + (i - 1) * ROW_H
+            local rx      = px + PAD - 4
+            local rw      = PANEL_W - PAD * 2 + 8
+            local saved   = state.savedSlots[tmpl]
+            local hovered = (i == hoverIdx)
 
-        -- row bg
-        if state.selectedTemplate == tmpl then
-            love.graphics.setColor(0.9, 0.9, 0.9, 0.2)
-            love.graphics.rectangle("fill", rx, ry, rw, ROW_H - 2)
-            love.graphics.setColor(0.9, 0.9, 0.9, 0.8)
-            love.graphics.setLineWidth(2)
-            love.graphics.rectangle("line", rx, ry, rw, ROW_H - 2)
-            love.graphics.setLineWidth(1)
-        elseif hovered then
-            love.graphics.setColor(0.25, 0.25, 0.25, 1)
-            love.graphics.rectangle("fill", rx, ry, rw, ROW_H - 2)
+            -- row bg
+            if state.selectedTemplate == tmpl then
+                love.graphics.setColor(0.9, 0.9, 0.9, 0.2)
+                love.graphics.rectangle("fill", rx, ry, rw, ROW_H - 2)
+                love.graphics.setColor(0.9, 0.9, 0.9, 0.8)
+                love.graphics.setLineWidth(2)
+                love.graphics.rectangle("line", rx, ry, rw, ROW_H - 2)
+                love.graphics.setLineWidth(1)
+            elseif hovered then
+                love.graphics.setColor(0.25, 0.25, 0.25, 1)
+                love.graphics.rectangle("fill", rx, ry, rw, ROW_H - 2)
+            end
+
+            -- status icon
+            love.graphics.setColor(saved and {0.9, 0.9, 0.9} or {0.3, 0.3, 0.3})
+            love.graphics.print(saved and "✓" or "○", px + PAD, ry + 4)
+
+            -- label
+            local hasData = state.bindings and state.bindings[tmpl] ~= nil
+            if state.selectedTemplate == tmpl then
+                love.graphics.setColor(0.95, 0.95, 0.95)
+            elseif hasData then
+                love.graphics.setColor(0.7, 0.7, 0.7)
+            else
+                love.graphics.setColor(0.4, 0.4, 0.4)
+            end
+            love.graphics.print(tmpl, px + PAD + 18, ry + 4)
         end
-
-        -- status icon
-        love.graphics.setColor(saved and {0.9, 0.9, 0.9} or {0.3, 0.3, 0.3})
-        love.graphics.print(saved and "✓" or "○", px + PAD, ry + 4)
-
-        -- label
-        local hasData = state.bindings and state.bindings[tmpl] ~= nil
-        if state.selectedTemplate == tmpl then
-            love.graphics.setColor(0.95, 0.95, 0.95)
-        elseif hasData then
-            love.graphics.setColor(0.7, 0.7, 0.7)
-        else
-            love.graphics.setColor(0.4, 0.4, 0.4)
-        end
-        love.graphics.print(tmpl, px + PAD + 18, ry + 4)
     end
 
     -- divider above buttons

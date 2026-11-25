@@ -12,6 +12,7 @@ function Tilemap.new(w, h, size)
     self.tileSize = size or 32
     self.grid     = {}
     self.tileBatches = {}
+    self.animBatches = {}
     self.untexturedTiles = {}
     return self
 end
@@ -28,6 +29,7 @@ function Tilemap:clear()
     end
     self.grid = {}
     self.tileBatches = {}
+    self.animBatches = {}
     self.untexturedTiles = {}
     Context.mapDirty = true
 end
@@ -200,9 +202,72 @@ end
 
 local DEFAULT_UNTEXTURED_COLOR = {1, 0, 1}
 
+local function buildTileQuads(texture, animDef)
+    if animDef._cachedQuads and animDef._cachedTex == texture then
+        return animDef._cachedQuads
+    end
+
+    local fw = animDef.frameW or 32
+    local fh = animDef.frameH or 32
+    local l  = animDef.left or 0
+    local t  = animDef.top or 0
+    local b  = animDef.border or 0
+    local iw, ih = texture:getDimensions()
+
+    local coords = {}
+    if type(animDef.frames) == "string" then
+        local nums = {}
+        for n in animDef.frames:gmatch("%d+") do
+            table.insert(nums, tonumber(n))
+        end
+        for i = 1, #nums - 1, 2 do
+            table.insert(coords, { nums[i], nums[i + 1] })
+        end
+    elseif type(animDef.frames) == "table" then
+        for _, f in ipairs(animDef.frames) do
+            if type(f) == "table" and f[1] and f[2] then
+                table.insert(coords, { f[1], f[2] })
+            end
+        end
+    end
+
+    local quads = {}
+    for _, c in ipairs(coords) do
+        local col, row = c[1], c[2]
+        local qx = l + (col - 1) * fw + col * b
+        local qy = t + (row - 1) * fh + row * b
+        table.insert(quads, love.graphics.newQuad(qx, qy, fw, fh, iw, ih))
+    end
+
+    if #quads == 0 then
+        table.insert(quads, love.graphics.newQuad(0, 0, fw, fh, iw, ih))
+    end
+
+    animDef._cachedQuads = quads
+    animDef._cachedTex = texture
+    return quads
+end
+
+function Tilemap:update(dt)
+    if not self.animBatches then return end
+    for _, group in pairs(self.animBatches) do
+        for _, entry in ipairs(group.entries) do
+            if #entry.quads > 1 and entry.duration > 0 then
+                entry.timer = entry.timer + dt
+                if entry.timer >= entry.duration then
+                    entry.timer = entry.timer - entry.duration
+                    entry.frame = (entry.frame % #entry.quads) + 1
+                    group.batch:set(entry.id, entry.quads[entry.frame], entry.px, entry.py, 0, entry.sx, entry.sy)
+                end
+            end
+        end
+    end
+end
+
 function Tilemap:draw()
     if Context.mapDirty then
         self.tileBatches = {}
+        self.animBatches = {}
         self.untexturedTiles = {}
         
         for y, row in pairs(self.grid) do
@@ -211,7 +276,32 @@ function Tilemap:draw()
                 local px = x * self.tileSize
                 local py = y * self.tileSize
                 
-                if tpl.texture then
+                if tpl.texture and tpl.animation then
+                    local quads = buildTileQuads(tpl.texture, tpl.animation)
+                    local group = self.animBatches[tpl.texture]
+                    if not group then
+                        local maxSprites = math.max(1000, self.width * self.height)
+                        group = {
+                            batch = love.graphics.newSpriteBatch(tpl.texture, maxSprites, "dynamic"),
+                            entries = {}
+                        }
+                        self.animBatches[tpl.texture] = group
+                    end
+                    local fw = tpl.animation.frameW or tpl.texture:getWidth()
+                    local fh = tpl.animation.frameH or tpl.texture:getHeight()
+                    local sx = self.tileSize / fw
+                    local sy = self.tileSize / fh
+                    local spriteId = group.batch:add(quads[1], px, py, 0, sx, sy)
+                    table.insert(group.entries, {
+                        id = spriteId,
+                        px = px, py = py,
+                        sx = sx, sy = sy,
+                        quads = quads,
+                        duration = tpl.animation.duration or 0.2,
+                        timer = 0,
+                        frame = 1
+                    })
+                elseif tpl.texture then
                     if not self.tileBatches[tpl.texture] then
                         local maxSprites = math.max(1000, self.width * self.height)
                         self.tileBatches[tpl.texture] = love.graphics.newSpriteBatch(tpl.texture, maxSprites, "static")
@@ -234,6 +324,11 @@ function Tilemap:draw()
     if self.tileBatches then
         for tex, batch in pairs(self.tileBatches) do
             love.graphics.draw(batch, 0, 0)
+        end
+    end
+    if self.animBatches then
+        for tex, group in pairs(self.animBatches) do
+            love.graphics.draw(group.batch, 0, 0)
         end
     end
     

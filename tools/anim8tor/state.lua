@@ -16,6 +16,7 @@ local state = {
     selectedFrames = {},
     
     selectedTemplate = "walk_down",
+    targetMode = "character", -- "character" or "tile"
     savedSlots = {},
     
     inputState = {

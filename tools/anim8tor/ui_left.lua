@@ -65,9 +65,25 @@ function ui_left.draw()
     end
     
     love.graphics.setColor(0.95, 0.95, 0.95)
-    love.graphics.print("EXPORT", 20, 560)
-    
-    local ent = field("Entity", "entity", 600, state.inputState.entityType.text)
+    love.graphics.print("EXPORT", 20, 535)
+
+    local modeLabel = (state.targetMode == "tile") and "MODE: TILE" or "MODE: CHARACTER"
+    if UI.Button("btn_mode", modeLabel, 20, 560, 260, 32) then
+        if state.targetMode == "tile" then
+            state.targetMode = "character"
+            if state.inputState.entityType.text == "water" then
+                state.inputState.entityType.text = "player"
+            end
+        else
+            state.targetMode = "tile"
+            if state.inputState.entityType.text == "player" then
+                state.inputState.entityType.text = "water"
+            end
+        end
+    end
+
+    local targetLabel = (state.targetMode == "tile") and "Tile ID" or "Entity"
+    local ent = field(targetLabel, "entity", 605, state.inputState.entityType.text)
     if ent then state.inputState.entityType.text = ent end
     
     -- Draw EXIT button at the top bar area (centered horizontally)

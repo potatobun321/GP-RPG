@@ -115,6 +115,7 @@ function Game:update(dt)
     Systems.AnimationSystem(dt)
     Systems.HoverSystem(dt)
     Systems.TokenSystem(dt)
+    if self.world and self.world.update then self.world:update(dt) end
     PluginLoader.update(dt)
 
     local trans = self.playerId and Registry.get(self.playerId, "Transform") or nil
