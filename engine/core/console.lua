@@ -348,11 +348,19 @@ function Console.setupGlobals(game)
         end,
         run = function(id)
             local PluginLoader = require('engine.core.plugin_loader')
+            local p = PluginLoader.plugins[id]
             Console.isOpen = false
-            local ok, err = PluginLoader.launchScene(id)
-            if not ok then
+            if p and p.scene then
+                local ok, err = PluginLoader.launchScene(id)
+                if not ok then
+                    Console.isOpen = true
+                    Console.log("ERR: " .. tostring(err), {1, 0.2, 0.2})
+                end
+            elseif p and p.commands and p.commands.play then
+                p.commands.play()
+            else
                 Console.isOpen = true
-                Console.log("ERR: " .. tostring(err), {1, 0.2, 0.2})
+                Console.log("ERR: Plugin '" .. tostring(id) .. "' has no runnable scene or play command.", {1, 0.2, 0.2})
             end
         end,
         enable = function(id)
@@ -457,7 +465,7 @@ function Console.execute(line, game)
     elseif line == "flag.list" then rewritten = "flag.list()"
     elseif line == "plugin.list" then rewritten = "plugin.list()"
     elseif line == "plugin.reload" then rewritten = "plugin.reload()"
-    elseif require('engine.core.plugin_loader').plugins[line] and require('engine.core.plugin_loader').plugins[line].scene then
+    elseif require('engine.core.plugin_loader').plugins[line] then
         rewritten = "plugin.run('" .. line .. "')"
     else
         local pcmd, parg1 = line:match("^plugin%.([a-z]+) ([^ ]+)$")
