@@ -105,4 +105,6 @@ Every plugin hook and token `execute` receives one consistent `ctx` table:
 * `ctx.flags` — Global `FlagManager` (`get`, `set`, `toggle`, `list`)
 * `ctx.events` — Global `Event` bus (`on`, `emit`)
 * `ctx.console` — `Console` (`log`)
+* `ctx.plugins` — Registered plugins table (`id -> plugin`)
+* `ctx.call(id, cmd, ...)` — Safely invoke another plugin's `commands[cmd]`
 * `ctx.game` — Active `scenes/game.lua` table (`spawnDefaultEntities`, `clearDefaultEntities`)

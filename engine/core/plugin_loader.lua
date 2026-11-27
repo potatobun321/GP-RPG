@@ -25,6 +25,23 @@ local PLUGIN_DEFAULTS = {
 
 local _cachedCtx = nil
 
+function PluginLoader.get(id)
+    return PluginLoader.plugins[id]
+end
+
+function PluginLoader.call(pluginId, cmdName, ...)
+    local p = PluginLoader.plugins[pluginId]
+    if not p then return false, "Unknown plugin: " .. tostring(pluginId) end
+    if PluginLoader.enabled[pluginId] == false then
+        return false, "Plugin disabled: " .. tostring(pluginId)
+    end
+    local fn = p.commands and p.commands[cmdName]
+    if type(fn) ~= "function" then
+        return false, "Unknown command '" .. tostring(cmdName) .. "' on plugin '" .. tostring(pluginId) .. "'"
+    end
+    return true, fn(...)
+end
+
 function PluginLoader.buildContext()
     if not _cachedCtx then
         local game = require('scenes.game')
@@ -35,12 +52,15 @@ function PluginLoader.buildContext()
             flags    = require('engine.state.flag_manager'),
             events   = _G.Event,
             console  = require('engine.core.console'),
+            plugins  = PluginLoader.plugins,
+            call     = PluginLoader.call,
             game     = game,
             Context  = Context,
         }
     else
-        _cachedCtx.world  = _cachedCtx.game and _cachedCtx.game.world or nil
-        _cachedCtx.events = _G.Event
+        _cachedCtx.world   = _cachedCtx.game and _cachedCtx.game.world or nil
+        _cachedCtx.events  = _G.Event
+        _cachedCtx.plugins = PluginLoader.plugins
     end
     return _cachedCtx
 end

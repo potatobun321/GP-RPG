@@ -10,6 +10,8 @@ local State = {
     customBounds = nil,
     unbounded = false,
     fitSize = nil,    -- optional { w = number, h = number, pad = number }
+    tween = nil,      -- optional timed eased camera transition
+    tweenHoldScale = nil,
     lockTarget = nil, -- optional { x = number, y = number } set by plugins/cutscenes
     profiles = {
         gameplay = {
@@ -79,8 +81,44 @@ function Camera.setTarget(x, y, snap)
     end
 end
 
+local function evalEase(kind, u)
+    if kind == "linear" then return u
+    elseif kind == "in" then return u * u
+    elseif kind == "out" then return 1 - (1 - u) * (1 - u)
+    end
+    -- default: smooth "inOut"
+    return u * u * (3 - 2 * u)
+end
+
+function Camera.tweenTo(x, y, targetZoomOrScale, duration, ease, isFloatScale)
+    local p = State.profiles.gameplay
+    local ts = p.scale
+    local zoomLvl = nil
+    if targetZoomOrScale ~= nil then
+        if isFloatScale then
+            ts = targetZoomOrScale
+        else
+            zoomLvl = targetZoomOrScale
+            ts = Camera.getScaleFromLevel(targetZoomOrScale)
+        end
+    end
+    duration = math.max(0.01, duration or 1.0)
+    State.tweenHoldScale = nil
+    State.tween = {
+        sx = p.x, sy = p.y, ss = p.scale,
+        tx = x or p.x, ty = y or p.y, ts = ts,
+        zoomLvl = zoomLvl,
+        isFloatScale = isFloatScale,
+        duration = duration,
+        t = 0,
+        ease = ease or "inOut",
+    }
+end
+
 function Camera.clearTarget()
     State.lockTarget = nil
+    State.tween = nil
+    State.tweenHoldScale = nil
 end
 
 function Camera.setUnbounded(flag)
@@ -140,13 +178,34 @@ function Camera:update(dt, targetX, targetY, world)
         p.scale = p.scale + (p.targetScale - p.scale) * 10 * dt
 
     elseif State.activeProfile == "gameplay" then
+        if State.tween then
+            local tw = State.tween
+            tw.t = math.min(tw.duration, tw.t + dt)
+            local e = evalEase(tw.ease, tw.t / tw.duration)
+            p.x = tw.sx + (tw.tx - tw.sx) * e
+            p.y = tw.sy + (tw.ty - tw.sy) * e
+            p.scale = tw.ss + (tw.ts - tw.ss) * e
+            if tw.t >= tw.duration then
+                State.lockTarget = { x = tw.tx, y = tw.ty }
+                if tw.zoomLvl ~= nil then
+                    p.zoomLevel = tw.zoomLvl
+                    p.targetZoomLevel = tw.zoomLvl
+                    State.tweenHoldScale = nil
+                elseif tw.isFloatScale then
+                    State.tweenHoldScale = tw.ts
+                end
+                State.tween = nil
+            end
+            return
+        end
+
         -- Zoom logic (Discrete)
         local finalTargetZoom = p.zoomLevel
         if p.tempZoomActive then
             finalTargetZoom = p.activeZoomLevel or (p.zoomLevel + 1)
         end
 
-        local targetScale = self.getScaleFromLevel(finalTargetZoom)
+        local targetScale = State.tweenHoldScale or self.getScaleFromLevel(finalTargetZoom)
         if State.fitSize then
             local sw, sh = love.graphics.getDimensions()
             targetScale = math.max(0.25, math.min((sw - State.fitSize.pad) / State.fitSize.w, (sh - State.fitSize.pad) / State.fitSize.h))
