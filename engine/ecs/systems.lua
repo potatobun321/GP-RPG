@@ -4,6 +4,13 @@ local Context  = require('engine.core.context')
 local Input    = require('engine.core.input')
 local Theme    = require('engine.core.theme')
 
+local _Camera, _PluginLoader, _StoryManager, _Factory, _Console
+local function getCamera()       if not _Camera       then _Camera       = require('engine.core.camera') end; return _Camera end
+local function getPluginLoader() if not _PluginLoader then _PluginLoader = require('engine.core.plugin_loader') end; return _PluginLoader end
+local function getStoryManager() if not _StoryManager then _StoryManager = require('engine.narrative.story_manager') end; return _StoryManager end
+local function getFactory()      if not _Factory      then _Factory      = require('engine.core.factory') end; return _Factory end
+local function getConsole()      if not _Console      then _Console      = require('engine.core.console') end; return _Console end
+
 local SYS_QUERIES = {
     PlayerInput = { sig = "Velocity|PlayerInput", req = {"Velocity", "PlayerInput"} },
     Movement    = { sig = "Transform|Velocity", req = {"Transform", "Velocity"} },
@@ -71,11 +78,13 @@ local function updateSpatialHash()
         currentIds[cid] = true
         local ct = Registry.get(cid, "Transform")
         local cc = Registry.get(cid, "Collider")
+        local cx = ct.x + (cc.ox or 0)
+        local cy = ct.y + (cc.oy or 0)
         
-        local minCol = math.floor(ct.x / CELL_SIZE)
-        local maxCol = math.floor((ct.x + cc.w) / CELL_SIZE)
-        local minRow = math.floor(ct.y / CELL_SIZE)
-        local maxRow = math.floor((ct.y + cc.h) / CELL_SIZE)
+        local minCol = math.floor(cx / CELL_SIZE)
+        local maxCol = math.floor((cx + cc.w) / CELL_SIZE)
+        local minRow = math.floor(cy / CELL_SIZE)
+        local maxRow = math.floor((cy + cc.h) / CELL_SIZE)
         
         local cache = SpatialCache[cid]
         if not cache then
@@ -96,7 +105,8 @@ local function updateSpatialHash()
     end
 end
 
-local function checkEntityCollision(id, nx, ny, w, h)
+local function checkEntityCollision(id, nx, ny, w, h, entityZ)
+    local ez = entityZ or 0
     local minCol = math.floor(nx / CELL_SIZE)
     local maxCol = math.floor((nx + w) / CELL_SIZE)
     local minRow = math.floor(ny / CELL_SIZE)
@@ -114,9 +124,13 @@ local function checkEntityCollision(id, nx, ny, w, h)
                             checked[cid] = true
                             local ct = Registry.get(cid, "Transform")
                             local cc = Registry.get(cid, "Collider")
-                            if nx < ct.x + cc.w and nx + w > ct.x and
-                               ny < ct.y + cc.h and ny + h > ct.y then
-                                return true
+                            if (ct.z or 0) == ez then
+                                local cx = ct.x + (cc.ox or 0)
+                                local cy = ct.y + (cc.oy or 0)
+                                if nx < cx + cc.w and nx + w > cx and
+                                   ny < cy + cc.h and ny + h > cy then
+                                    return true
+                                end
                             end
                         end
                     end
@@ -150,9 +164,12 @@ function Systems.MovementSystem(dt, world)
         local targetX = trans.x + vel.dx * vel.currentSpeed * dt
         local targetY = trans.y + vel.dy * vel.currentSpeed * dt
 
-        local collW, collH = trans.w, trans.h
+        local collW, collH, collOx, collOy = trans.w, trans.h, 0, 0
         local coll = Registry.get(id, "Collider")
-        if coll then collW, collH = coll.w, coll.h end
+        if coll then
+            collW, collH = coll.w, coll.h
+            collOx, collOy = coll.ox or 0, coll.oy or 0
+        end
 
         -- Sub-stepping to prevent tunneling
         local dist = math.sqrt((targetX - trans.x)^2 + (targetY - trans.y)^2)
@@ -163,17 +180,20 @@ function Systems.MovementSystem(dt, world)
         local stepX = (targetX - trans.x) / steps
         local stepY = (targetY - trans.y) / steps
         
+        local ez = trans.z or 0
         for i = 1, steps do
             local nextX = trans.x + stepX
             local nextY = trans.y + stepY
             
-            if not world:isSolidPixel(nextX, trans.y, collW, collH) and not checkEntityCollision(id, nextX, trans.y, collW, collH) then
+            if not world:isSolidPixel(nextX + collOx, trans.y + collOy, collW, collH, ez)
+               and not checkEntityCollision(id, nextX + collOx, trans.y + collOy, collW, collH, ez) then
                 trans.x = nextX
             else
                 stepX = 0
             end
             
-            if not world:isSolidPixel(trans.x, nextY, collW, collH) and not checkEntityCollision(id, trans.x, nextY, collW, collH) then
+            if not world:isSolidPixel(trans.x + collOx, nextY + collOy, collW, collH, ez)
+               and not checkEntityCollision(id, trans.x + collOx, nextY + collOy, collW, collH, ez) then
                 trans.y = nextY
             else
                 stepY = 0
@@ -282,12 +302,26 @@ end
 local tileBatches = {}
 local DEFAULT_COLOR = {1, 1, 1}
 
+local _renderOrder = {}
+local function sortByDepth(a, b)
+    local ta = Registry.get(a, "Transform")
+    local tb = Registry.get(b, "Transform")
+    local za = ta.z or 0
+    local zb = tb.z or 0
+    if za ~= zb then return za < zb end
+    return (ta.y + ta.h) < (tb.y + tb.h)
+end
+
 function Systems.RenderSystem()
     local entities = Registry.queryCached(SYS_QUERIES.Render.sig, SYS_QUERIES.Render.req)
     local colors   = Theme.get()
 
-    -- Draw characters (tiles are now drawn separately in Tilemap:draw)
-    for _, id in ipairs(entities) do
+    for i = 1, #entities do _renderOrder[i] = entities[i] end
+    for i = #entities + 1, #_renderOrder do _renderOrder[i] = nil end
+    table.sort(_renderOrder, sortByDepth)
+
+    -- Draw characters sorted by (z, y + h)
+    for _, id in ipairs(_renderOrder) do
         local r = Registry.get(id, "Renderable")
         if r.type == "character" then
             local t    = Registry.get(id, "Transform")
@@ -344,8 +378,7 @@ end
 
 function Systems.HoverSystem(dt)
     local mx, my = love.mouse.getPosition()
-    local Camera = require('engine.core.camera')
-    local wx, wy = Camera:screenToWorld(mx, my)
+    local wx, wy = getCamera():screenToWorld(mx, my)
 
     local entities = Registry.queryCached("Transform|Flags", {"Transform", "Flags"})
     for _, id in ipairs(entities) do
@@ -389,24 +422,76 @@ function Systems.TokenSystem(dt)
             elseif token == "PlayLoveInk" then
                 local attrs = Registry.get(id, "Attributes")
                 if attrs and attrs.story_id then
-                    local StoryManager = require('engine.narrative.story_manager')
-                    StoryManager.startStory(attrs.story_id)
+                    getStoryManager().startStory(attrs.story_id)
                 end
                 table.remove(q, i)
             elseif string.sub(token, 1, 17) == "ReplaceComposite_" then
                 local newComp = string.sub(token, 18)
-                local Factory = require('engine.core.factory')
-                local Console = require('engine.core.console')
-                Console.log("Mutating entity " .. id .. " -> " .. newComp, {0.8, 0.2, 0.8})
-                Factory.applyComposite(id, newComp)
+                getConsole().log("Mutating entity " .. id .. " -> " .. newComp, {0.8, 0.2, 0.8})
+                getFactory().applyComposite(id, newComp)
                 break -- break loop because queue is wiped
             else
-                local PluginLoader = require('engine.core.plugin_loader')
+                local PluginLoader = getPluginLoader()
                 local pToken = PluginLoader.tokens[token]
                 if pToken and pToken.execute then
                     pToken.execute(id, PluginLoader.buildContext())
                 end
                 table.remove(q, i)
+            end
+        end
+    end
+end
+
+function Systems.InteractionSystem(playerId, world)
+    if not playerId or not world then return false end
+    local trans = Registry.get(playerId, "Transform")
+    if not trans then return false end
+
+    local gx = math.floor((trans.x + trans.w / 2) / world.tileSize)
+    local gy = math.floor((trans.y + trans.h / 2) / world.tileSize)
+    local Console = require('engine.core.console')
+
+    for id, _ in pairs(Registry.entities) do
+        if id ~= playerId then
+            local etrans = Registry.get(id, "Transform")
+            local eflags = Registry.get(id, "Flags")
+            if etrans and eflags and eflags.is_interactable then
+                local egx = math.floor((etrans.x + etrans.w / 2) / world.tileSize)
+                local egy = math.floor((etrans.y + etrans.h / 2) / world.tileSize)
+                if math.abs(gx - egx) <= 1 and math.abs(gy - egy) <= 1 then
+                    local q = Registry.get(id, "TokenQueue")
+                    if q then
+                        table.insert(q, "TriggerOnInteract")
+                        Console.log("Emitted TriggerOnInteract to entity " .. id)
+                        return true
+                    end
+                end
+            end
+        end
+    end
+
+    local tdata = world:getTileData(gx, gy)
+    if tdata and tdata.flags and tdata.flags.interactMessage then
+        local StoryManager = require('engine.narrative.story_manager')
+        StoryManager.startInteraction(tdata.flags.interactMessage)
+        return true
+    end
+    return false
+end
+
+function Systems.ClickInteractionSystem(wx, wy)
+    local Console = require('engine.core.console')
+    local entities = Registry.queryCached("Transform|Flags", {"Transform", "Flags"})
+    for _, id in ipairs(entities) do
+        local flags = Registry.get(id, "Flags")
+        if flags.is_hoverable then
+            local t = Registry.get(id, "Transform")
+            if wx >= t.x and wx <= t.x + t.w and wy >= t.y and wy <= t.y + t.h then
+                local q = Registry.get(id, "TokenQueue")
+                if q then
+                    table.insert(q, "TriggerOnClick")
+                    Console.log("Emitted TriggerOnClick to entity " .. id)
+                end
             end
         end
     end

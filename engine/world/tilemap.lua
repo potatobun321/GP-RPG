@@ -2,6 +2,12 @@ local Registry = require('engine.ecs.registry')
 local Factory  = require('engine.core.factory')
 local Context  = require('engine.core.context')
 
+local _Theme, _Camera
+local function getTheme()  if not _Theme  then _Theme  = require('engine.core.theme') end; return _Theme end
+local function getCamera() if not _Camera then _Camera = require('engine.core.camera') end; return _Camera end
+
+local CHUNK_SIZE = 16
+
 local Tilemap = {}
 Tilemap.__index = Tilemap
 
@@ -11,9 +17,11 @@ function Tilemap.new(w, h, size)
     self.height   = h    or 31
     self.tileSize = size or 32
     self.grid     = {}
-    self.tileBatches = {}
-    self.animBatches = {}
-    self.untexturedTiles = {}
+    self.entities = {}
+    self.chunks   = {}
+    self.dirtyChunks = {}
+    self.animClocks  = {}
+    self._needsFullRebuild = true
     return self
 end
 
@@ -28,9 +36,11 @@ function Tilemap:clear()
         Registry.remove(id)
     end
     self.grid = {}
-    self.tileBatches = {}
-    self.animBatches = {}
-    self.untexturedTiles = {}
+    self.entities = {}
+    self.chunks = {}
+    self.dirtyChunks = {}
+    self.animClocks = {}
+    self._needsFullRebuild = true
     Context.mapDirty = true
 end
 
@@ -44,6 +54,9 @@ function Tilemap:saveMap(mapName)
         customBounds = require('engine.core.camera').customBounds,
         tiles = {}
     }
+    if self.entities and #self.entities > 0 then
+        mapData.entities = self.entities
+    end
     
     local function flagsMatch(f1, f2)
         if f1 == nil and f2 == nil then return true end
@@ -144,6 +157,11 @@ function Tilemap:loadMap(mapName)
         end
     end
     Context.mapDirty = true
+    self._needsFullRebuild = true
+    self.entities = mapData.entities or {}
+    for _, entDef in ipairs(self.entities) do
+        Factory.spawnMapEntity(entDef, self.tileSize)
+    end
     print("Loaded map: " .. mapName)
 end
 
@@ -181,10 +199,15 @@ function Tilemap:setTile(gx, gy, typeId, customFlags)
     end
     
     self.grid[gy][gx] = { typeId = typeId, flags = finalFlags, gridX = gx, gridY = gy }
+    local cx = math.floor(gx / CHUNK_SIZE)
+    local cy = math.floor(gy / CHUNK_SIZE)
+    self.dirtyChunks[cy] = self.dirtyChunks[cy] or {}
+    self.dirtyChunks[cy][cx] = true
     Context.mapDirty = true
 end
 
-function Tilemap:isSolidPixel(px, py, w, h)
+function Tilemap:isSolidPixel(px, py, w, h, entityZ)
+    local ez = entityZ or 0
     local minX = math.floor(px / self.tileSize)
     local maxX = math.floor((px + w - 0.01) / self.tileSize)
     local minY = math.floor(py / self.tileSize)
@@ -193,8 +216,15 @@ function Tilemap:isSolidPixel(px, py, w, h)
     for gy = minY, maxY do
         for gx = minX, maxX do
             local tdata = self:getTileData(gx, gy)
-            if tdata and tdata.flags and tdata.flags.solid then return true end
             if not tdata then return true end
+            if tdata.flags then
+                local tz = tdata.flags.z or 0
+                if tdata.flags.solid then
+                    if ez <= tz then return true end
+                elseif tz > 0 and ez < tz then
+                    return true
+                end
+            end
         end
     end
     return false
@@ -248,16 +278,128 @@ local function buildTileQuads(texture, animDef)
     return quads
 end
 
+local function rebuildChunk(self, cx, cy)
+    self.chunks[cy] = self.chunks[cy] or {}
+    local chunk = {
+        tileBatches = {},
+        animGroups  = {},
+        untextured  = {},
+    }
+    self.chunks[cy][cx] = chunk
+
+    local startX = cx * CHUNK_SIZE
+    local startY = cy * CHUNK_SIZE
+    local endX   = startX + CHUNK_SIZE - 1
+    local endY   = startY + CHUNK_SIZE - 1
+    local maxSprites = CHUNK_SIZE * CHUNK_SIZE
+
+    for gy = startY, endY do
+        local row = self.grid[gy]
+        if row then
+            for gx = startX, endX do
+                local tdata = row[gx]
+                if tdata then
+                    local tpl = Factory.getTile(tdata.typeId)
+                    local px = gx * self.tileSize
+                    local py = gy * self.tileSize
+
+                    if tpl.texture and tpl.animation then
+                        local quads = buildTileQuads(tpl.texture, tpl.animation)
+                        local clock = self.animClocks[tdata.typeId]
+                        if not clock then
+                            clock = {
+                                quads    = quads,
+                                duration = tpl.animation.duration or 0.2,
+                                mode     = tpl.animation.mode or "loop",
+                                dir      = 1,
+                                timer    = 0,
+                                frame    = 1,
+                            }
+                            self.animClocks[tdata.typeId] = clock
+                        end
+
+                        local group = chunk.animGroups[tdata.typeId]
+                        if not group then
+                            group = {
+                                batch   = love.graphics.newSpriteBatch(tpl.texture, maxSprites, "dynamic"),
+                                clock   = clock,
+                                entries = {},
+                            }
+                            chunk.animGroups[tdata.typeId] = group
+                        end
+                        local offset = 0
+                        local phase = tpl.animation.phase
+                        if #quads > 1 then
+                            if phase == "noise" then
+                                offset = math.floor(love.math.noise(gx * 0.25, gy * 0.25) * #quads)
+                            elseif phase == "random" then
+                                offset = love.math.random(0, #quads - 1)
+                            end
+                        end
+                        local fw = tpl.animation.frameW or tpl.texture:getWidth()
+                        local fh = tpl.animation.frameH or tpl.texture:getHeight()
+                        local sx = self.tileSize / fw
+                        local sy = self.tileSize / fh
+                        local initIdx = ((clock.frame - 1 + offset) % #quads) + 1
+                        local spriteId = group.batch:add(quads[initIdx], px, py, 0, sx, sy)
+                        table.insert(group.entries, { id = spriteId, px = px, py = py, sx = sx, sy = sy, offset = offset })
+                    elseif tpl.texture then
+                        local batch = chunk.tileBatches[tpl.texture]
+                        if not batch then
+                            batch = love.graphics.newSpriteBatch(tpl.texture, maxSprites, "static")
+                            chunk.tileBatches[tpl.texture] = batch
+                        end
+                        local scaleX = self.tileSize / tpl.texture:getWidth()
+                        local scaleY = self.tileSize / tpl.texture:getHeight()
+                        batch:add(px, py, 0, scaleX, scaleY)
+                    else
+                        table.insert(chunk.untextured, { px = px, py = py, tpl = tpl })
+                    end
+                end
+            end
+        end
+    end
+end
+
 function Tilemap:update(dt)
-    if not self.animBatches then return end
-    for _, group in pairs(self.animBatches) do
-        for _, entry in ipairs(group.entries) do
-            if #entry.quads > 1 and entry.duration > 0 then
-                entry.timer = entry.timer + dt
-                if entry.timer >= entry.duration then
-                    entry.timer = entry.timer - entry.duration
-                    entry.frame = (entry.frame % #entry.quads) + 1
-                    group.batch:set(entry.id, entry.quads[entry.frame], entry.px, entry.py, 0, entry.sx, entry.sy)
+    if not self.animClocks then return end
+    local advanced = nil
+    for typeId, clock in pairs(self.animClocks) do
+        local n = #clock.quads
+        if n > 1 and clock.duration > 0 then
+            clock.timer = clock.timer + dt
+            if clock.timer >= clock.duration then
+                clock.timer = clock.timer - clock.duration
+                if clock.mode == "pingpong" then
+                    local nxt = clock.frame + clock.dir
+                    if nxt > n then
+                        clock.dir = -1
+                        nxt = math.max(1, n - 1)
+                    elseif nxt < 1 then
+                        clock.dir = 1
+                        nxt = math.min(n, 2)
+                    end
+                    clock.frame = nxt
+                else
+                    clock.frame = (clock.frame % n) + 1
+                end
+                advanced = advanced or {}
+                advanced[typeId] = clock
+            end
+        end
+    end
+    if not advanced then return end
+
+    for _, row in pairs(self.chunks) do
+        for _, chunk in pairs(row) do
+            for typeId, clock in pairs(advanced) do
+                local group = chunk.animGroups[typeId]
+                if group then
+                    local n = #clock.quads
+                    for _, entry in ipairs(group.entries) do
+                        local idx = ((clock.frame - 1 + (entry.offset or 0)) % n) + 1
+                        group.batch:set(entry.id, clock.quads[idx], entry.px, entry.py, 0, entry.sx, entry.sy)
+                    end
                 end
             end
         end
@@ -266,81 +408,65 @@ end
 
 function Tilemap:draw()
     if Context.mapDirty then
-        self.tileBatches = {}
-        self.animBatches = {}
-        self.untexturedTiles = {}
-        
-        for y, row in pairs(self.grid) do
-            for x, tdata in pairs(row) do
-                local tpl = Factory.getTile(tdata.typeId)
-                local px = x * self.tileSize
-                local py = y * self.tileSize
-                
-                if tpl.texture and tpl.animation then
-                    local quads = buildTileQuads(tpl.texture, tpl.animation)
-                    local group = self.animBatches[tpl.texture]
-                    if not group then
-                        local maxSprites = math.max(1000, self.width * self.height)
-                        group = {
-                            batch = love.graphics.newSpriteBatch(tpl.texture, maxSprites, "dynamic"),
-                            entries = {}
-                        }
-                        self.animBatches[tpl.texture] = group
-                    end
-                    local fw = tpl.animation.frameW or tpl.texture:getWidth()
-                    local fh = tpl.animation.frameH or tpl.texture:getHeight()
-                    local sx = self.tileSize / fw
-                    local sy = self.tileSize / fh
-                    local spriteId = group.batch:add(quads[1], px, py, 0, sx, sy)
-                    table.insert(group.entries, {
-                        id = spriteId,
-                        px = px, py = py,
-                        sx = sx, sy = sy,
-                        quads = quads,
-                        duration = tpl.animation.duration or 0.2,
-                        timer = 0,
-                        frame = 1
-                    })
-                elseif tpl.texture then
-                    if not self.tileBatches[tpl.texture] then
-                        local maxSprites = math.max(1000, self.width * self.height)
-                        self.tileBatches[tpl.texture] = love.graphics.newSpriteBatch(tpl.texture, maxSprites, "static")
-                    end
-                    local scaleX = self.tileSize / tpl.texture:getWidth()
-                    local scaleY = self.tileSize / tpl.texture:getHeight()
-                    self.tileBatches[tpl.texture]:add(px, py, 0, scaleX, scaleY)
-                else
-                    table.insert(self.untexturedTiles, {px=px, py=py, typeId=tdata.typeId, tpl=tpl})
+        if self._needsFullRebuild then
+            self.chunks = {}
+            self.dirtyChunks = {}
+            self.animClocks = {}
+            for gy, row in pairs(self.grid) do
+                local cy = math.floor(gy / CHUNK_SIZE)
+                for gx in pairs(row) do
+                    local cx = math.floor(gx / CHUNK_SIZE)
+                    self.dirtyChunks[cy] = self.dirtyChunks[cy] or {}
+                    self.dirtyChunks[cy][cx] = true
                 end
             end
+            self._needsFullRebuild = false
         end
+        for cy, cols in pairs(self.dirtyChunks) do
+            for cx in pairs(cols) do
+                rebuildChunk(self, cx, cy)
+            end
+        end
+        self.dirtyChunks = {}
         Context.mapDirty = false
     end
-    
-    local Theme = require('engine.core.theme')
-    local colors = Theme.get()
-    
+
+    local colors = getTheme().get()
+    local Camera = getCamera()
+    local sw, sh = love.graphics.getDimensions()
+    local x0, y0 = Camera:screenToWorld(0, 0)
+    local x1, y1 = Camera:screenToWorld(sw, sh)
+    local chunkPx = CHUNK_SIZE * self.tileSize
+    local minCx = math.floor(x0 / chunkPx)
+    local maxCx = math.floor(x1 / chunkPx)
+    local minCy = math.floor(y0 / chunkPx)
+    local maxCy = math.floor(y1 / chunkPx)
+
     love.graphics.setColor(1, 1, 1, 1)
-    if self.tileBatches then
-        for tex, batch in pairs(self.tileBatches) do
-            love.graphics.draw(batch, 0, 0)
-        end
-    end
-    if self.animBatches then
-        for tex, group in pairs(self.animBatches) do
-            love.graphics.draw(group.batch, 0, 0)
-        end
-    end
-    
-    if self.untexturedTiles then
-        for _, t in ipairs(self.untexturedTiles) do
-            local c = colors[t.tpl.colorKey] or DEFAULT_UNTEXTURED_COLOR
-            if t.tpl.draw_style == "line" then
-                love.graphics.setColor(c[1], c[2], c[3], 0.2)
-                love.graphics.rectangle("line", t.px, t.py, self.tileSize, self.tileSize)
-            else
-                love.graphics.setColor(c)
-                love.graphics.rectangle("fill", t.px, t.py, self.tileSize, self.tileSize)
+    for cy = minCy, maxCy do
+        local row = self.chunks[cy]
+        if row then
+            for cx = minCx, maxCx do
+                local chunk = row[cx]
+                if chunk then
+                    for _, batch in pairs(chunk.tileBatches) do
+                        love.graphics.draw(batch, 0, 0)
+                    end
+                    for _, group in pairs(chunk.animGroups) do
+                        love.graphics.draw(group.batch, 0, 0)
+                    end
+                    for _, t in ipairs(chunk.untextured) do
+                        local c = colors[t.tpl.colorKey] or DEFAULT_UNTEXTURED_COLOR
+                        if t.tpl.draw_style == "line" then
+                            love.graphics.setColor(c[1], c[2], c[3], 0.2)
+                            love.graphics.rectangle("line", t.px, t.py, self.tileSize, self.tileSize)
+                        else
+                            love.graphics.setColor(c)
+                            love.graphics.rectangle("fill", t.px, t.py, self.tileSize, self.tileSize)
+                        end
+                    end
+                    love.graphics.setColor(1, 1, 1, 1)
+                end
             end
         end
     end

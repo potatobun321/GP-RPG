@@ -68,20 +68,28 @@ return {
 
     -- Declarative world/camera state while this plugin is active
     world = {
+        isolated            = false, -- true = give plugin its own clean Tilemap (preserves RPG map)
+        exclusiveInput      = false, -- true = suppress RPG player input/interaction while active
         hideDefaultEntities = false, -- true = despawn RPG player & template NPC
         cameraZoomLevel     = nil,   -- integer 0..6, or nil to keep map zoom
+        cameraUnbounded     = false, -- true = disable map-bounds clamping for plugin camera
     },
 
+    tiles      = {},
     tokens     = {},
     composites = {},
     commands   = {}, -- Exposed under ~ terminal (e.g. plugin.run my_plugin)
 
-    onLoad       = function(ctx) end,
-    onEnter      = function(ctx) end,
-    onExit       = function(ctx) end,
-    onUpdate     = function(dt, ctx) end,
-    onKeypressed = function(key, ctx) end,
-    onDraw       = function(ctx) end,
+    onLoad          = function(ctx) end,
+    onEnter         = function(ctx) end,
+    onExit          = function(ctx) end,
+    onUpdate        = function(dt, ctx) end,
+    onKeypressed    = function(key, ctx) end,
+    onMousepressed  = function(x, y, button, ctx) end,
+    onMousereleased = function(x, y, button, ctx) end,
+    onMousemoved    = function(x, y, dx, dy, ctx) end,
+    onWheelmoved    = function(x, y, ctx) end,
+    onDraw          = function(ctx) end,
 }
 ```
 

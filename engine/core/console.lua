@@ -143,23 +143,43 @@ function Console.setupGlobals(game)
             return Console.log("Invalid size. Use 8 to 256.", {1,0,0})
         end
         local oldSize = game.world.tileSize
+        if oldSize == size then return end
+        local ratio = size / oldSize
         game.world.tileSize = size
-        
-        if game.playerId then
-            local ptrans = Registry.get(game.playerId, "Transform")
-            local pgx = math.floor((ptrans.x + ptrans.w/2) / oldSize)
-            local pgy = math.floor((ptrans.y + ptrans.h/2) / oldSize)
-            ptrans.x = pgx * size
-            ptrans.y = pgy * size
-            ptrans.w = size
-            ptrans.h = size
-            local prend = Registry.get(game.playerId, "Renderable")
-            if prend then prend.scaleX = nil; prend.scaleY = nil end
+
+        for _, comps in pairs(Registry.entities) do
+            local t = comps.Transform
+            if t then
+                t.x = t.x * ratio
+                t.y = t.y * ratio
+                t.w = t.w * ratio
+                t.h = t.h * ratio
+            end
+            local c = comps.Collider
+            if c then
+                c.w  = c.w * ratio
+                c.h  = c.h * ratio
+                c.ox = (c.ox or 0) * ratio
+                c.oy = (c.oy or 0) * ratio
+            end
+            local r = comps.Renderable
+            if r then
+                r.scaleX = nil
+                r.scaleY = nil
+            end
         end
-        
-        local Context = require('engine.core.context')
+
+        local Camera = require('engine.core.camera')
+        if Camera.customBounds then
+            for i = 1, 4 do
+                Camera.customBounds[i] = Camera.customBounds[i] * ratio
+            end
+            game.world.customBounds = Camera.customBounds
+        end
+
+        game.world._needsFullRebuild = true
         Context.mapDirty = true
-        Console.log("Resized tiles to " .. size, {0, 1, 0})
+        Console.log("Resized tiles to " .. size .. "px", {0, 1, 0})
     end
     Console.env.flag = {
         list = function()
@@ -217,11 +237,10 @@ function Console.setupGlobals(game)
     Console.env.composite = {
         inspect = function(name)
             local PresetLoader = require('engine.core.preset_loader')
-            local p = PresetLoader.activePreset
-            if not p or not p.Composites or not p.Composites[name] then
+            local c = PresetLoader.getComposite(name)
+            if not c then
                 return Console.log("Composite not found: " .. tostring(name), {1,0,0})
             end
-            local c = p.Composites[name]
             Console.log("--- COMPOSITE: " .. name .. " ---", {0, 1, 1})
             if c.Flags then
                 Console.log("Flags:", {0.8, 0.8, 0.8})
@@ -295,6 +314,13 @@ function Console.setupGlobals(game)
     Console.env.int = function(v) setStat("int", v) end
     Console.env.hp = function(v) setStat("hp", v) end
     Console.env.spd = function(v) setStat("spd", v) end
+    Console.env.z = function(v)
+        local n = numarg(v, "z")
+        if not n or not game.playerId then return end
+        local t = Registry.get(game.playerId, "Transform")
+        if t then t.z = n end
+        Console.log("Player Z set to " .. n, {0, 1, 0})
+    end
     
     local Camera = require('engine.core.camera')
     
@@ -400,63 +426,111 @@ function Console.setupGlobals(game)
         Console.env.help()
     end
     
+    Console.env.savegame = function(slot)
+        local SaveManager = require('engine.state.save_manager')
+        local ok, res = SaveManager.save(slot or "slot1", game)
+        if ok then Console.log("Saved game state -> " .. res, {0, 1, 0})
+        else Console.log("ERR: " .. tostring(res), {1, 0.2, 0.2}) end
+    end
+    Console.env.loadgame = function(slot)
+        local SaveManager = require('engine.state.save_manager')
+        local ok, res = SaveManager.load(slot or "slot1", game)
+        if ok then Console.log("Loaded game state <- " .. res, {0, 1, 0})
+        else Console.log("ERR: " .. tostring(res), {1, 0.2, 0.2}) end
+    end
+    Console.env.listsaves = function()
+        local SaveManager = require('engine.state.save_manager')
+        local slots = SaveManager.list()
+        Console.log("--- SAVED SLOTS ---", {0, 1, 1})
+        if #slots == 0 then
+            Console.log("  (no save slots)", {0.7, 0.7, 0.7})
+            return
+        end
+        for _, s in ipairs(slots) do Console.log("  " .. s, {0.9, 0.9, 0.9}) end
+    end
+
+    Console.env.debug = function()
+        local DebugOverlay = require('engine.core.debug_overlay')
+        local on = DebugOverlay.toggle()
+        Console.log("Debug Overlay: " .. (on and "ON" or "OFF"), on and {0.3, 1, 0.5} or {1, 0.7, 0.3})
+    end
+
+    Console.env.tp = function(gx, gy)
+        gx, gy = tonumber(gx), tonumber(gy)
+        if not gx or not gy or not game.playerId or not game.world then
+            return Console.log("Usage: tp.gx.gy (e.g. tp.0.0)", {1, 0.2, 0.2})
+        end
+        local t = Registry.get(game.playerId, "Transform")
+        if t then
+            t.x = gx * game.world.tileSize
+            t.y = gy * game.world.tileSize
+            Context.lastTeleportTile = { x = gx, y = gy }
+            Console.log(string.format("Teleported to (%d, %d)", gx, gy), {0, 1, 0})
+        end
+    end
+
+    Console.env.entity = {
+        list = function()
+            Console.log("--- ENTITIES ---", {0, 1, 1})
+            for id, comps in pairs(Registry.entities) do
+                local compName = comps.ActiveComposite and comps.ActiveComposite.id or (comps.PlayerInput and "Player" or "Entity")
+                local t = comps.Transform
+                local pos = t and string.format("(%d,%d)", math.floor(t.x), math.floor(t.y)) or "(no transform)"
+                Console.log(string.format("  #%d %-16s %s", id, compName, pos), {0.9, 0.9, 0.9})
+            end
+        end
+    }
+
     Console.env.clear = Console.clear
-    Console.env.help = function()
-        local C = {0, 1, 1}       -- cyan for headers
-        local W = {0.9, 0.9, 0.9} -- white for commands
+    Console.env.help = function(topic)
+        local C = {0, 1, 1}
+        local W = {0.9, 0.9, 0.9}
+        local M = {0.65, 0.75, 0.85}
 
-        local function section(title)
-            Console.log(" ", C)
-            Console.log("--- " .. title .. " ---", C)
+        if topic == "maps" then
+            Console.log("--- MAPS ---", C)
+            Console.log("listmaps | newmap.X | loadmap.X | save / save.X", W)
+            Console.log("duplicatemap.A.B | deletemap.X | resize.N", W)
+            return
+        elseif topic == "state" then
+            Console.log("--- STATE & SAVES ---", C)
+            Console.log("flag.list | flag.get X | flag.set X val | flag.toggle X", W)
+            Console.log("savegame / savegame.slot | loadgame / loadgame.slot | listsaves", W)
+            return
+        elseif topic == "stats" then
+            Console.log("--- PLAYER & DEBUG ---", C)
+            Console.log("charc | hp.N | spd.N | atk.N | def.N | endr.N | int.N", W)
+            Console.log("tp.gx.gy | entity.list | debug (F3)", W)
+            return
+        elseif topic == "tools" then
+            Console.log("--- TOOLS & PLUGINS ---", C)
+            Console.log("edit | anim | plugin.list | plugin.run X | plugin.reload", W)
+            Console.log("zoom.set N | zoom.temp N | zoom.temp clear | theme.X", W)
+            return
         end
-        local function row(cmd, desc)
-            Console.log(string.format("%-15s - %s", cmd, desc), W)
-        end
 
-        section("TOOLS & EDITOR")
-        row("edit",       "Toggle the Map Editor panel")
-        row("anim",       "Open the Anim8tor sprite tool")
-        row("plugin.list","List loaded plugins & scenes")
-        row("plugin.run", "Usage: plugin.run <id> (e.g. tetris)")
-        row("charc",      "Print the player stat table")
-        row("clear",      "Clear all console logs")
-
-        section("MAP MANAGEMENT")
-        row("listmaps",   "List all playable maps")
-        row("newmap.X",   "Create a new map named X")
-        row("duplicatemap.A.B", "Duplicate map A to B")
-        row("deletemap.X","Delete map named X")
-        row("save",       "Save current map")
-        row("save.X",     "Save map under filename X")
-        row("loadmap.X",  "Load map by filename X")
-        row("resize.N",   "Resize every tile to N pixels")
-
-        section("PLAYER STATS")
-        row("hp.N",       "Set max & current HP")
-        row("spd.N",      "Set base movement speed")
-        row("atk.N",      "Set ATK (attack power)")
-        row("def.N",      "Set DEF (defense)")
-        row("endr.N",     "Set ENDR (endurance)")
-        row("int.N",      "Set INT (intelligence)")
-
-        section("CAMERA & DISPLAY")
-        row("theme.X",    "Set theme (neon/dracula/dark/light)")
-
-        section("NARRATIVE & STATE")
-        row("flag.list",  "List all active narrative flags")
-        row("flag.get",   "Usage: flag.get <name>")
-        row("flag.set",   "Usage: flag.set <name> <value>")
-        row("flag.toggle","Usage: flag.toggle <name>")
-        row("token.inspect", "Usage: token.inspect <name>")
-        row("composite.inspect", "Usage: composite.inspect <name>")
-        row("zoom.set(N)",  "Set permanent default zoom")
-        row("zoom.temp(N)", "Set active zoom (used with Shift+Z)")
-        Console.log(" ", C)
+        Console.log("--- CONSOLE COMMANDS (help.maps | help.state | help.stats | help.tools) ---", C)
+        Console.log("Tools:   edit | anim | debug (F3) | theme.<name> | clear", W)
+        Console.log("Plugins: plugin.list | plugin.run <id> | plugin.reload | <id>", W)
+        Console.log("Maps:    listmaps | newmap.X | loadmap.X | save | save.X | resize.N", W)
+        Console.log("State:   flag.list | flag.set X val | savegame [slot] | loadgame [slot]", W)
+        Console.log("Player:  charc | hp.N | spd.N | tp.gx.gy | entity.list", W)
+        Console.log("Camera:  zoom.set 0..6 | zoom.temp 0..6 | zoom.temp clear", W)
+        Console.log("Inspect: token.inspect X | composite.inspect X | history", M)
     end
 end
 
 function Console.execute(line, game)
     if line == "" then return end
+    if game then
+        Console.env.world = game.world
+        if game.playerId then
+            local Registry = require('engine.ecs.registry')
+            Console.env.player = Registry.get(game.playerId, "Transform")
+            Console.env.vel    = Registry.get(game.playerId, "Velocity")
+            Console.env.char   = Registry.get(game.playerId, "CharacterStats")
+        end
+    end
     Console.log("> " .. line, {0.6, 0.6, 0.6})
     table.insert(Console.history, line)
     Console.historyIndex = 0
@@ -466,15 +540,34 @@ function Console.execute(line, game)
     elseif line == "save" then rewritten = "save()"
     elseif line == "clear" then rewritten = "clear()"
     elseif line == "help" then rewritten = "help()"
+    elseif line == "debug" then rewritten = "debug()"
     elseif line == "charc" then rewritten = "charc()"
     elseif line == "anim" then rewritten = "anim()"
     elseif line == "listmaps" then rewritten = "listmaps()"
+    elseif line == "savegame" then rewritten = "savegame()"
+    elseif line == "loadgame" then rewritten = "loadgame()"
+    elseif line == "listsaves" then rewritten = "listsaves()"
+    elseif line == "entity.list" then rewritten = "entity.list()"
     elseif line == "flag.list" then rewritten = "flag.list()"
     elseif line == "plugin.list" then rewritten = "plugin.list()"
     elseif line == "plugin.reload" then rewritten = "plugin.reload()"
     elseif require('engine.core.plugin_loader').plugins[line] then
         rewritten = "plugin.run('" .. line .. "')"
     else
+        local htopic = line:match("^help%.([a-z]+)$")
+        if htopic then
+            rewritten = "help('" .. htopic .. "')"
+        end
+        local zcmd, zarg = line:match("^zoom%.([a-z]+) ([^ ]+)$")
+        if zcmd == "set" then
+            rewritten = "zoom.set(" .. zarg .. ")"
+        elseif zcmd == "temp" then
+            rewritten = (zarg == "clear") and "zoom.temp('clear')" or ("zoom.temp(" .. zarg .. ")")
+        end
+        local tgx, tgy = line:match("^tp%.([%-]?%d+)%.([%-]?%d+)$")
+        if tgx and tgy then
+            rewritten = "tp(" .. tgx .. ", " .. tgy .. ")"
+        end
         local pcmd, parg1 = line:match("^plugin%.([a-z]+) ([^ ]+)$")
         if pcmd == "run" or pcmd == "enable" or pcmd == "disable" then
             rewritten = "plugin." .. pcmd .. "('" .. parg1 .. "')"
@@ -495,7 +588,7 @@ function Console.execute(line, game)
             local cmd, arg = line:match("^([%a_]+)%.([%w_]+)$")
         if cmd and arg then
             -- Fix #24: accept both 'load' and 'loadmap' from the user
-            if cmd == "load" or cmd == "loadmap" or cmd == "theme" or cmd == "save" or cmd == "newmap" or cmd == "deletemap" then
+            if cmd == "load" or cmd == "loadmap" or cmd == "theme" or cmd == "save" or cmd == "newmap" or cmd == "deletemap" or cmd == "savegame" or cmd == "loadgame" then
                 rewritten = (cmd == "load" and "loadmap" or cmd) .. "('" .. arg .. "')"
             elseif tonumber(arg) then
                 rewritten = cmd .. "(" .. arg .. ")"
@@ -554,7 +647,19 @@ function Console.textinput(t)
 end
 
 local function autocomplete()
-    local envKeys = {"anim", "charc", "atk.", "def.", "endr.", "int.", "hp.", "spd.", "edit", "save", "save.", "loadmap.", "theme.", "resize.", "zoom.set(", "zoom.temp(", "clear", "help", "listmaps", "newmap.", "deletemap.", "duplicatemap."}
+    local envKeys = {
+        "anim", "charc", "clear", "composite.inspect ", "debug", "deletemap.", "duplicatemap.",
+        "edit", "entity.list", "flag.get ", "flag.list", "flag.set ", "flag.toggle ",
+        "help", "history", "hp.", "spd.", "atk.", "def.", "endr.", "int.",
+        "listmaps", "listsaves", "loadgame", "loadmap.", "newmap.",
+        "plugin.disable ", "plugin.enable ", "plugin.list", "plugin.reload", "plugin.run ",
+        "resize.", "save", "savegame", "theme.", "token.inspect ", "tp.",
+        "zoom.set ", "zoom.temp "
+    }
+    local PluginLoader = require('engine.core.plugin_loader')
+    for _, id in ipairs(PluginLoader.order or {}) do
+        table.insert(envKeys, id)
+    end
     for _, key in ipairs(envKeys) do
         if key:sub(1, #Console.input) == Console.input then
             Console.input = key
@@ -573,10 +678,9 @@ function Console.keypressed(key, game)
         local byteoffset = utf8.offset(Console.input, -1)
         if byteoffset then Console.input = string.sub(Console.input, 1, byteoffset - 1) end
     elseif key == "up" then
-        if #Console.history > 0 then
-            if Console.historyIndex == 0 then Console.historyIndex = 1 end
+        if #Console.history > 0 and Console.historyIndex < #Console.history then
+            Console.historyIndex = Console.historyIndex + 1
             Console.input = Console.history[#Console.history - Console.historyIndex + 1] or ""
-            if Console.historyIndex < #Console.history then Console.historyIndex = Console.historyIndex + 1 end
         end
     elseif key == "down" then
         if Console.historyIndex > 1 then

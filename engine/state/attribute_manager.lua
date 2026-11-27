@@ -19,5 +19,40 @@ function AttributeManager.get(entity, key)
     return nil
 end
 
--- Future expansion: serialize() and deserialize(data)
+function AttributeManager.clear()
+    AttributeManager.attributes = {}
+end
+
+function AttributeManager.serialize()
+    local copy = {}
+    for entity, attrs in pairs(AttributeManager.attributes) do
+        if type(attrs) == "table" then
+            copy[entity] = {}
+            for k, v in pairs(attrs) do
+                local t = type(v)
+                if t == "boolean" or t == "number" or t == "string" then
+                    copy[entity][k] = v
+                end
+            end
+        end
+    end
+    return copy
+end
+
+function AttributeManager.deserialize(data)
+    AttributeManager.attributes = {}
+    if type(data) ~= "table" then return end
+    for entity, attrs in pairs(data) do
+        if type(attrs) == "table" then
+            AttributeManager.attributes[entity] = {}
+            for k, v in pairs(attrs) do
+                local t = type(v)
+                if t == "boolean" or t == "number" or t == "string" then
+                    AttributeManager.attributes[entity][k] = v
+                end
+            end
+        end
+    end
+end
+
 return AttributeManager

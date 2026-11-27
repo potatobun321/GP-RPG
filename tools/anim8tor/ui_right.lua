@@ -1,7 +1,5 @@
--- core/animator/ui_right.lua
--- Right panel: animation preview (top) + binding slot list (bottom).
--- SUIT is GONE. Pure love.graphics + mouse detection only.
--- LUIS buttons for BIND & SAVE / EXPORT are registered in scenes/animator.lua.
+-- tools/anim8tor/ui_right.lua
+-- Right panel: animation preview + playback controls (top) + binding slot list & export (bottom).
 
 local state    = require('tools.anim8tor.state')
 local viewport = require('tools.anim8tor.viewport')
@@ -12,7 +10,7 @@ local ui_right = {}
 
 local PANEL_W = 320
 local PAD     = 16
-local ROW_H   = 20
+local ROW_H   = 18
 
 local TEMPLATES = {
     "walk_down",  "walk_up",  "walk_left",  "walk_right",
@@ -23,69 +21,60 @@ local TEMPLATES = {
 local hoverIdx     = nil
 local mouseWasDown = false
 
--- ─────────────────────────────────────────────────────────────────────────────
 local function panelX() return state.screenW - PANEL_W end
 
--- Y where the first template row starts
 local function listStartY()
-    return math.floor(state.screenH * 0.5) + PAD + 40
+    return math.floor(state.screenH * 0.5) + PAD + 38
 end
 
--- ─────────────────────────────────────────────────────────────────────────────
 function ui_right.update()
     local px  = panelX()
     local lsY = listStartY()
     local mx, my = love.mouse.getPosition()
 
-    -- hover detection
     hoverIdx = nil
-    for i = 1, #TEMPLATES do
-        local ry = lsY + (i - 1) * ROW_H
-        if mx >= px + PAD and mx <= px + PANEL_W - PAD
-        and my >= ry and my < ry + ROW_H then
-            hoverIdx = i
-            break
+    if state.targetMode ~= "tile" then
+        for i = 1, #TEMPLATES do
+            local ry = lsY + (i - 1) * ROW_H
+            if mx >= px + PAD and mx <= px + PANEL_W - PAD
+            and my >= ry and my < ry + ROW_H then
+                hoverIdx = i
+                break
+            end
         end
     end
 
-    -- single-click to select template
     local down = love.mouse.isDown(1)
     if down and not mouseWasDown and hoverIdx then
-        state.selectedTemplate = TEMPLATES[hoverIdx]
-        -- keep exportName in sync so logic.bindAndSave knows what to save
-        state.inputState.exportName.text = TEMPLATES[hoverIdx]
+        logic.selectBindingSlot(TEMPLATES[hoverIdx])
     end
     mouseWasDown = down
 end
 
--- ─────────────────────────────────────────────────────────────────────────────
 function ui_right.draw()
     local px   = panelX()
     local divY = math.floor(state.screenH * 0.5)
     local prevW = PANEL_W - PAD * 2
 
-    -- ── panel background ──────────────────────────────────────────────────────
+    -- Panel background
     love.graphics.setColor(0.1, 0.1, 0.1, 1)
     love.graphics.rectangle("fill", px, 0, PANEL_W, state.screenH)
 
-    -- Left border line
     love.graphics.setColor(0.3, 0.3, 0.3, 1)
     love.graphics.setLineWidth(2)
     love.graphics.line(px, 0, px, state.screenH)
     love.graphics.setLineWidth(1)
 
-    -- ══════════════════════════════════════════════════════════════════════════
-    --  TOP HALF  –  PREVIEW
-    -- ══════════════════════════════════════════════════════════════════════════
+    -- TOP HALF: PREVIEW
     if state.font then love.graphics.setFont(state.font) end
     love.graphics.setColor(0.75, 0.75, 0.85)
-    love.graphics.print("PREVIEW", px + PAD, PAD + 4)
+    love.graphics.print("PREVIEW", px + PAD, PAD)
 
-    local prevY = PAD + 28
-    local prevH = divY - prevY - PAD
+    local prevY = PAD + 26
+    local ctrlH = 26
+    local prevH = divY - prevY - ctrlH - PAD - 8
     local bx, by, bw, bh = px + PAD, prevY, prevW, prevH
 
-    -- dark box
     love.graphics.setColor(0.15, 0.15, 0.15)
     love.graphics.rectangle("fill", bx, by, bw, bh)
     love.graphics.setColor(0.3, 0.3, 0.3)
@@ -94,7 +83,7 @@ function ui_right.draw()
     love.graphics.setLineWidth(1)
 
     if state.errorMessage ~= "" then
-        love.graphics.setColor(0.6, 0.6, 0.6)
+        love.graphics.setColor(1, 0.35, 0.35)
         if state.fontSmall then love.graphics.setFont(state.fontSmall) end
         love.graphics.printf("ERR: " .. state.errorMessage,
             px + PAD + 6, prevY + 6, prevW - 12, "left")
@@ -107,30 +96,55 @@ function ui_right.draw()
         local dw = fw * sc
         local dh = fh * sc
         local dx = px + PAD + (prevW / 2) - (dw / 2)
-        local dy = prevY       + (prevH / 2) - (dh / 2)
+        local dy = prevY + (prevH / 2) - (dh / 2)
         viewport.drawCheckerboard(dx, dy, dw, dh, 16)
         love.graphics.setColor(1, 1, 1)
-        state.animation:draw(state.image, dx, dy, 0, sc, sc)
+        local sx = state.flipH and -sc or sc
+        local ox = state.flipH and fw or 0
+        state.animation:draw(state.image, dx, dy, 0, sx, sc, ox, 0)
 
     else
-        love.graphics.setColor(0.33, 0.33, 0.38)
+        love.graphics.setColor(0.38, 0.38, 0.43)
         if state.fontSmall then love.graphics.setFont(state.fontSmall) end
         love.graphics.printf("Drop spritesheet\n& click frames",
             px + PAD, prevY + prevH * 0.35, prevW, "center")
     end
 
-    -- ══════════════════════════════════════════════════════════════════════════
-    --  BOTTOM HALF  –  BINDING SLOTS
-    -- ══════════════════════════════════════════════════════════════════════════
+    -- Playback controls row below preview box
+    local ctrlY = divY - ctrlH - 8
+    local cbw = math.floor((prevW - 12) / 4)
+    if UI.Button("btn_prev_f", "<", px + PAD, ctrlY, cbw, ctrlH) then
+        logic.stepFrame(-1)
+    end
+    local playLabel = state.playing and "PAUSE" or "PLAY"
+    if UI.Button("btn_play", playLabel, px + PAD + cbw + 4, ctrlY, cbw, ctrlH) then
+        state.playing = not state.playing
+    end
+    if UI.Button("btn_next_f", ">", px + PAD + (cbw + 4) * 2, ctrlY, cbw, ctrlH) then
+        logic.stepFrame(1)
+    end
+    local flipLabel = state.flipH and "FLIP*" or "FLIP"
+    if UI.Button("btn_flip", flipLabel, px + PAD + (cbw + 4) * 3, ctrlY, cbw, ctrlH) then
+        state.flipH = not state.flipH
+    end
+
+    -- Center TRY SAMPLE button when no image is loaded
+    if not state.image then
+        local sx = state.screenW / 2 - 75
+        local sy = state.screenH / 2 + 148
+        if UI.Button("btn_sample", "TRY SAMPLE", sx, sy, 150, 30) then
+            logic.loadSample()
+        end
+    end
+
+    -- BOTTOM HALF: BINDING SLOTS / TILE INFO
     love.graphics.setColor(0.1, 0.1, 0.1)
     love.graphics.rectangle("fill", px, divY, PANEL_W, state.screenH - divY)
 
-    -- Divider glow line
     love.graphics.setColor(0.3, 0.3, 0.3)
     love.graphics.setLineWidth(1)
     love.graphics.line(px + PAD, divY, px + PANEL_W - PAD, divY)
 
-    -- Header
     if state.font then love.graphics.setFont(state.font) end
     love.graphics.setColor(0.95, 0.95, 0.95)
     if state.targetMode == "tile" then
@@ -140,15 +154,11 @@ function ui_right.draw()
         love.graphics.printf("Writes animation = {...} to:\ncontent/tiles/<Tile ID>.lua\nand spritesheet to <Tile ID>.png", px + PAD, divY + PAD + 32, prevW, "left")
     else
         love.graphics.print("BINDINGS", px + PAD, divY + PAD)
-
-        -- Compact hint below header
         if state.fontSmall then love.graphics.setFont(state.fontSmall) end
         love.graphics.setColor(0.6, 0.6, 0.6)
-        love.graphics.print("select slot → BIND & SAVE → animations.lua", px + PAD, divY + PAD + 22)
+        love.graphics.print("slot -> BIND & SAVE -> animations.lua", px + PAD, divY + PAD + 20)
 
-        -- ── Template list ─────────────────────────────────────────────────────
         local lsY = listStartY()
-
         for i, tmpl in ipairs(TEMPLATES) do
             local ry      = lsY + (i - 1) * ROW_H
             local rx      = px + PAD - 4
@@ -156,7 +166,6 @@ function ui_right.draw()
             local saved   = state.savedSlots[tmpl]
             local hovered = (i == hoverIdx)
 
-            -- row bg
             if state.selectedTemplate == tmpl then
                 love.graphics.setColor(0.9, 0.9, 0.9, 0.2)
                 love.graphics.rectangle("fill", rx, ry, rw, ROW_H - 2)
@@ -169,34 +178,32 @@ function ui_right.draw()
                 love.graphics.rectangle("fill", rx, ry, rw, ROW_H - 2)
             end
 
-            -- status icon
-            love.graphics.setColor(saved and {0.9, 0.9, 0.9} or {0.3, 0.3, 0.3})
-            love.graphics.print(saved and "✓" or "○", px + PAD, ry + 4)
+            love.graphics.setColor(saved and {0.4, 0.9, 0.5} or {0.3, 0.3, 0.3})
+            love.graphics.print(saved and "*" or "o", px + PAD, ry + 3)
 
-            -- label
             local hasData = state.bindings and state.bindings[tmpl] ~= nil
             if state.selectedTemplate == tmpl then
                 love.graphics.setColor(0.95, 0.95, 0.95)
             elseif hasData then
                 love.graphics.setColor(0.7, 0.7, 0.7)
             else
-                love.graphics.setColor(0.4, 0.4, 0.4)
+                love.graphics.setColor(0.5, 0.5, 0.5)
             end
-            love.graphics.print(tmpl, px + PAD + 18, ry + 4)
+            love.graphics.print(tmpl, px + PAD + 16, ry + 3)
         end
     end
 
-    -- divider above buttons
+    -- Divider above buttons
     love.graphics.setColor(0.3, 0.3, 0.3)
-    love.graphics.line(px + PAD, state.screenH - 110, px + PANEL_W - PAD, state.screenH - 110)
+    love.graphics.line(px + PAD, state.screenH - 96, px + PANEL_W - PAD, state.screenH - 96)
 
     -- Bottom Action Buttons
-    local btnY = state.screenH - 100
-    if UI.Button("btn_bind", "BIND & SAVE", px + PAD, btnY, PANEL_W - PAD * 2, 40) then
+    local btnY = state.screenH - 88
+    if UI.Button("btn_bind", "BIND & SAVE", px + PAD, btnY, PANEL_W - PAD * 2, 36) then
         logic.bindAndSave()
     end
-    
-    if UI.Button("btn_export", "VIEW MANIFEST", px + PAD, btnY + 48, PANEL_W - PAD * 2, 40) then
+
+    if UI.Button("btn_export", "COPY SNIPPET", px + PAD, btnY + 42, PANEL_W - PAD * 2, 36) then
         logic.exportBindings()
     end
 end

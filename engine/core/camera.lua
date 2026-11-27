@@ -8,6 +8,8 @@ local Camera = {}
 local State = {
     activeProfile = "gameplay",
     customBounds = nil,
+    unbounded = false,
+    fitSize = nil,    -- optional { w = number, h = number, pad = number }
     lockTarget = nil, -- optional { x = number, y = number } set by plugins/cutscenes
     profiles = {
         gameplay = {
@@ -49,7 +51,7 @@ setmetatable(Camera, {
         return nil
     end,
     __newindex = function(t, k, v)
-        if k == "activeProfile" or k == "customBounds" or k == "profiles" or k == "lockTarget" then 
+        if k == "activeProfile" or k == "customBounds" or k == "profiles" or k == "lockTarget" or k == "unbounded" then
             State[k] = v 
             return 
         end
@@ -69,17 +71,39 @@ setmetatable(Camera, {
     end
 })
 
-function Camera.setTarget(x, y)
+function Camera.setTarget(x, y, snap)
     State.lockTarget = { x = x, y = y }
+    if snap then
+        State.profiles.gameplay.x = x
+        State.profiles.gameplay.y = y
+    end
 end
 
 function Camera.clearTarget()
     State.lockTarget = nil
 end
 
-function Camera.setZoom(lvl)
+function Camera.setUnbounded(flag)
+    State.unbounded = (flag == true)
+end
+
+function Camera.fitArea(w, h, pad)
+    pad = pad or 48
+    State.fitSize = { w = w, h = h, pad = pad }
+    local sw, sh = love.graphics.getDimensions()
+    State.profiles.gameplay.scale = math.max(0.25, math.min((sw - pad) / w, (sh - pad) / h))
+end
+
+function Camera.clearFit()
+    State.fitSize = nil
+end
+
+function Camera.setZoom(lvl, snap)
     State.profiles.gameplay.zoomLevel = lvl
     State.profiles.gameplay.targetZoomLevel = lvl
+    if snap then
+        State.profiles.gameplay.scale = Camera.getScaleFromLevel(lvl)
+    end
 end
 
 function Camera.getZoom()
@@ -123,6 +147,10 @@ function Camera:update(dt, targetX, targetY, world)
         end
 
         local targetScale = self.getScaleFromLevel(finalTargetZoom)
+        if State.fitSize then
+            local sw, sh = love.graphics.getDimensions()
+            targetScale = math.max(0.25, math.min((sw - State.fitSize.pad) / State.fitSize.w, (sh - State.fitSize.pad) / State.fitSize.h))
+        end
         p.scale = p.scale + (targetScale - p.scale) * 10 * dt
 
         -- Movement Logic
@@ -141,7 +169,7 @@ function Camera:update(dt, targetX, targetY, world)
         end
 
         -- Bounds Logic
-        if world then
+        if world and not State.unbounded then
             local minX, maxX, minY, maxY
             
             if State.customBounds and not p._isFreeCam then

@@ -3,13 +3,13 @@
 ## 1. Critical Issues
 *Can cause crashes or corruption.*
 * **SpriteBatch Hard Limit:** `engine/world/tilemap.lua` hardcodes spritebatches to 10,000 sprites (`love.graphics.newSpriteBatch(..., 10000)`). If a large map exceeds 10k of a single tile texture, LÖVE will crash with a `SpriteBatch is full` error.
-* **Camera Death Freeze:** In `scenes/game.lua`, `Camera:update()` is ONLY called inside `if trans then` (meaning if the player `Transform` exists). If the player is destroyed, despawned, or loses their transform, the camera stops updating entirely—freezing Lerps and bounds calculations instantly.
+* *(Resolved in v6.5.1)* **Camera Death Freeze:** `Camera:update()` in `scenes/game.lua` now runs unconditionally outside `if trans then`.
 
 ## 2. High Priority Issues
 *Will cause maintenance problems.*
 * **Monolithic Input in `game.lua`:** Input handling for interactions (`E`), free-cam (`Shift+F`), and zoom (`Shift+Z`) is hardcoded directly into `Game:keypressed` and `Game:update`. This violates ECS principles and makes input remapping impossible without rewriting scene logic.
-* **Duplicated Code:** `scenes/animator.lua` and `tools/anim8tor/scene.lua` are exact, 1:1 duplicates of each other (4505 bytes). Only one should be the source of truth.
-* **Dead Code:** `Factory.createTileEntity` in `engine/core/factory.lua` creates ECS entities for tiles. Since the Map Rewrite migrated static tiles out of ECS and into a pure Grid/SpriteBatch architecture, this function is completely dead and misleading.
+* *(Resolved in v6.5.1)* **Duplicated Code:** `scenes/animator.lua` was removed; `tools/anim8tor/scene.lua` is now the single source of truth.
+* *(Resolved in v6.5.1)* **Dead Code:** `Factory.createTileEntity` was removed from `engine/core/factory.lua`.
 
 ## 3. Medium Priority Issues
 *Should be cleaned eventually.*
@@ -35,12 +35,8 @@
 
 # Documentation Audit Findings
 
-The following documents need to be refreshed to match recent architectural migrations:
-1. `CAMERA_ARCHITECTURE.md`: Needs updating to reflect discrete Zoom Levels (0-6) instead of continuous floats.
-2. `MAP_SYSTEM.md`: Needs updating to reflect the new `Assets.getMapData` centralized caching system.
-3. `CONSOLE_REFERENCE.md`: Needs updating to include the new `flag.list`, `flag.get`, `flag.set`, `flag.toggle` commands.
-
-*(Note: LOVEINK_INTEGRATION.md, FLAGS_SYSTEM.md, INTERACTION_SYSTEM.md, and NARRATIVE_ARCHITECTURE.md are fully up to date).*
+* **Updated:** `CAMERA_ARCHITECTURE.md`, `MAP_SYSTEM.md`, `CONSOLE_REFERENCE.md`, `ENGINE_ARCHITECTURE.md`, `CHANGELOG.md`, and `README.md` have been refreshed to match `v6.5.1` and `feat/plugins`.
+* **Up to date:** `LOVEINK_INTEGRATION.md`, `FLAGS_SYSTEM.md`, `INTERACTION_SYSTEM.md`, `NARRATIVE_ARCHITECTURE.md`, and `GRAMMAR_SPEC.md`.
 
 ---
 

@@ -29,7 +29,7 @@ end
 
 function love.quit()
     local s = Context.scene
-    if s and s.world and s.currentMapName then
+    if s and s.world and not s.world._isIsolated and s.currentMapName then
         s.world:saveMap(s.currentMapName)
     end
     return false
@@ -48,6 +48,10 @@ end
 
 function love.keypressed(key)
     if key == "escape" then love.event.quit() end
+    if key == "f11" then
+        love.window.setFullscreen(not love.window.getFullscreen(), "desktop")
+        return
+    end
     local s = Context.scene
     if s and s.keypressed then s:keypressed(key) end
 end

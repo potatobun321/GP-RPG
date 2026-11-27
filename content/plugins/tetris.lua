@@ -273,8 +273,11 @@ return {
     description = "Drives the current Tilemap & ECS entities using GP-RPG's table grammar.",
 
     world = {
+        isolated            = true,
+        exclusiveInput      = true,
         hideDefaultEntities = true,
         cameraZoomLevel     = 0,
+        cameraUnbounded     = true,
     },
 
     tokens = {
@@ -306,9 +309,11 @@ return {
         state.nextKind = popBag()
 
         local ts = ctx.world.tileSize
+        ctx.camera.fitArea((COLS + 2) * ts, (ROWS + 2) * ts, 48)
         ctx.camera.setTarget(
             (ORIGIN_X + COLS / 2 - 0.5) * ts,
-            (ORIGIN_Y + ROWS / 2 - 0.5) * ts
+            (ORIGIN_Y + ROWS / 2) * ts,
+            true
         )
 
         buildTilemapWell(ctx.world)

@@ -1,6 +1,6 @@
 # Console & Shortcuts Reference
 
-The Developer Console (`engine/core/console.lua`) is the master control panel for the GP-RPGV6.2 engine. It runs pure Lua code in a sandboxed environment, allowing you to manipulate state in real-time.
+The Developer Console (`engine/core/console.lua`) is the master control panel for the GP-RPG engine. It runs pure Lua code in a sandboxed environment, allowing you to manipulate state in real-time.
 
 ## Opening the Console
 Press **Tilde (`~` or `` ` ``)** or **F1** at any time during gameplay.
@@ -21,12 +21,16 @@ The Map Registry manages all JSON and legacy LUA maps across the `maps/` and `co
 
 ---
 
-## 2. Tools & Display
+## 2. Tools, Plugins & Display
 - **`edit`**: Toggles the Map Editor slide-in panel.
 - **`anim`**: Transitions from the game scene into the Anim8tor Sprite Tool.
+- **`plugin.list`**: Lists all discovered plugins (`content/plugins/`) with enabled/disabled status and type (`scene` or `rule`).
+- **`plugin.run <id>`** (or simply **`<id>`**, e.g. `tetris`): Enters or exits a runnable plugin mode.
+- **`plugin.enable <id>` / `plugin.disable <id>`**: Enables or disables a plugin.
+- **`plugin.reload`**: Reloads all plugins from `content/plugins/`.
 - **`theme.name`**: Changes the visual UI and primitive colors. Available: `neon`, `dracula`, `dark`, `light`.
-- **`zoom.set(N)`**: Sets the permanent gameplay zoom level (0 to 5) (e.g., `zoom.set(3)`).
-- **`zoom.temp(N)`**: Sets an active override gameplay zoom level.
+- **`zoom.set(N)`**: Sets the permanent gameplay zoom level (`0` to `6`, e.g. `zoom.set(3)`).
+- **`zoom.temp(N)` / `zoom.temp clear`**: Sets or clears a temporary gameplay zoom override (`0` to `6`).
 - **`clear`**: Wipes the console logs clean.
 - **`history`**: Displays previously entered console commands.
 
@@ -42,22 +46,28 @@ The Map Registry manages all JSON and legacy LUA maps across the `maps/` and `co
 
 ---
 
-## 4. Flag Management
-The new State Architecture manages global booleans/variables through `FlagManager`.
+## 4. Flag & Save State Management
+The State Architecture manages global booleans/variables through `FlagManager` and full RPG save slots through `SaveManager`.
 
 - **`flag.list()`**: Prints all active flags and their current values to the console.
 - **`flag.get("name")`**: Returns the current value of the specified flag.
 - **`flag.set("name", true/false)`**: Sets the specified flag to a boolean value.
 - **`flag.toggle("name")`**: Inverts the specified boolean flag.
+- **`savegame` / `savegame.slot`**: Saves current map, player position/HP, flags, and attributes to `saves/<slot>.json` (defaults to `slot1`).
+- **`loadgame` / `loadgame.slot`**: Restores saved map, player position/HP, flags, and attributes from `saves/<slot>.json`.
+- **`listsaves`**: Lists all saved game slots.
 
 ---
 
 ## 5. Keyboard Shortcuts
 
 **Global Actions:**
-- **`~` or `F1`**: Toggle Developer Console.
-- **`E`**: Interact with a tile (triggers `interactMessage` if the tile has one).
-- **`Esc`**: Quit game.
+- **`~`, `` ` ``, or `F1`**: Toggle Developer Console.
+- **`E`**: Interact with nearby `is_interactable` entities (emitting `TriggerOnInteract`) or fall back to tile `interactMessage`.
+- **`Shift + Z`**: Hold for temporary gameplay zoom override.
+- **`Shift + F`**: Toggle Free-Cam mode on or off manually.
+- **`F11`**: Toggle fullscreen.
+- **`Esc`**: Quit game (saves current map).
 
 **Editor specific (when `edit()` is active):**
 - **Left-Click**: Paint selected tile.

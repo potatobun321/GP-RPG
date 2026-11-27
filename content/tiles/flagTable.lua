@@ -4,6 +4,7 @@
 
 return {
     solid = false,         -- Blocks movement
+    z = 0,                 -- Elevation level (entities pass elevated tiles when entity.z >= tile.z)
     speedMod = 1.0,        -- Multiplier for walking speed
     healthAffect = 0,      -- HP change per second
     interactable = false,  -- Can the player interact with this?

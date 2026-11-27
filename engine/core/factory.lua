@@ -12,9 +12,33 @@ local function safeLoad(path)
     return Assets.getImage(path)
 end
 
+local _flagTableCache = nil
+
+local function getFlagDefaults()
+    if not _flagTableCache then
+        _flagTableCache = love.filesystem.load("content/tiles/flagTable.lua")()
+    end
+    return _flagTableCache
+end
+
+function Factory.registerTile(tileDef)
+    if type(tileDef) ~= "table" or not tileDef.id then return false end
+    if tileDef.texturePath then
+        tileDef.texture = safeLoad(tileDef.texturePath)
+    end
+    local flagTable = getFlagDefaults()
+    tileDef.flags = tileDef.flags or {}
+    for k, v in pairs(flagTable) do
+        if tileDef.flags[k] == nil then
+            tileDef.flags[k] = v
+        end
+    end
+    Factory.tiles[tileDef.id] = tileDef
+    return true
+end
+
 function Factory.load()
-    -- Load master flag defaults
-    local flagTable = love.filesystem.load("content/tiles/flagTable.lua")()
+    _flagTableCache = love.filesystem.load("content/tiles/flagTable.lua")()
 
     -- Dynamically load all tiles from content/tiles
     local files = love.filesystem.getDirectoryItems("content/tiles")
@@ -23,21 +47,7 @@ function Factory.load()
             local chunk = love.filesystem.load("content/tiles/" .. file)
             if chunk then
                 local tileDef = chunk()
-                if tileDef and tileDef.id then
-                    if tileDef.texturePath then
-                        tileDef.texture = safeLoad(tileDef.texturePath)
-                    end
-                    
-                    -- Merge missing flags from flagTable
-                    tileDef.flags = tileDef.flags or {}
-                    for k, v in pairs(flagTable) do
-                        if tileDef.flags[k] == nil then
-                            tileDef.flags[k] = v
-                        end
-                    end
-                    
-                    Factory.tiles[tileDef.id] = tileDef
-                end
+                Factory.registerTile(tileDef)
             end
         end
     end
@@ -106,7 +116,7 @@ function Factory.createCharacterEntity(px, py, typeId)
     Registry.add(id, "CharacterStats", Components.CharacterStats({atk=10, def=10, endr=10, int=10}))
     Registry.add(id, "Persistent", Components.Persistent())
     Registry.add(id, "State", Components.State("idle"))
-    Registry.add(id, "Collider", Components.Collider(16, 16))
+    Registry.add(id, "Collider", Components.Collider(16, 12, 4, 12))
     
     return id
 end
@@ -148,6 +158,47 @@ function Factory.applyComposite(id, compositeName)
     
     -- Clear TokenQueue on mutation
     Registry.add(id, "TokenQueue", Components.TokenQueue())
+end
+
+function Factory.spawnMapEntity(def, tileSize)
+    if type(def) ~= "table" then return nil end
+    tileSize = tileSize or 32
+    local px = (def.x ~= nil) and def.x or ((def.gx or 0) * tileSize)
+    local py = (def.y ~= nil) and def.y or ((def.gy or 0) * tileSize)
+
+    local id
+    if def.character == false then
+        id = Registry.create()
+        Registry.add(id, "Transform", Components.Transform(px, py, def.w or tileSize, def.h or tileSize))
+    else
+        id = Factory.createCharacterEntity(px, py, def.character or "player")
+        -- Map-scoped entities should be cleared on Tilemap:clear()
+        Registry.removeComponent(id, "Persistent")
+    end
+
+    if def.composite then
+        Factory.applyComposite(id, def.composite)
+    end
+
+    if def.attributes then
+        local attrs = Registry.get(id, "Attributes")
+        if not attrs then
+            attrs = Components.Attributes({})
+            Registry.add(id, "Attributes", attrs)
+        end
+        for k, v in pairs(def.attributes) do attrs[k] = v end
+    end
+
+    if def.flags then
+        local flags = Registry.get(id, "Flags")
+        if not flags then
+            flags = Components.Flags({})
+            Registry.add(id, "Flags", flags)
+        end
+        for k, v in pairs(def.flags) do flags[k] = v end
+    end
+
+    return id
 end
 
 return Factory

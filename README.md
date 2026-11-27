@@ -1,85 +1,40 @@
 # GP-RPG
 
-GP-RPG is a 2D role-playing game (RPG) engine built with Lua and LÖVE (Love2D). It combines a playable game runtime with built-in editing tools so you can build maps, configure character animations, and test branching dialogue in one place.
+A lightweight, table-driven 2D RPG engine and multi-genre framework built with **Lua** and **LÖVE (Love2D)**.
 
----
+## Core Features
 
-## How It Is Organized
+* **Chunked Tilemap & Animations:** `16×16` SpriteBatch-culled JSON maps with static & animated tiles (`sync`, `noise`, `random` phases; `loop`, `pingpong` playback).
+* **ECS & Pseudo-Depth (`z`-Axis):** Minimalist entity-component system with foot-aligned collision, `z`-elevation passability, and `(z, y)` depth sorting.
+* **Table-Grammar Plugins:** Drop-in plugins (`content/plugins/`) with isolated worlds, exclusive input routing, custom tiles, composites, tokens, and console commands (includes playable `tetris`).
+* **Narrative & State:** Integrated **LoveInk** branching dialogue, `FlagManager`, `AttributeManager`, and `SaveManager` (`savegame` / `loadgame`).
+* **Built-in Tools:**
+  * **Map Editor (`edit`)** — Tile painting, area fill, map links, camera bounds (`CBOUNDS`), and `ENTITY` composite placement.
+  * **Anim8tor (`anim`)** — Visual spritesheet slicer & tile animation editor (LoveMotion workflow).
+  * **Developer Console (`~` / `F1`) & Debug Overlay (`F3`)** — Sandboxed Lua REPL, live flags/stats/teleports, and collider/grid HUD.
 
-Think of the project as four main parts:
+## Running
 
-* **`engine/`** — The core program that runs the game: movement, camera, tile maps, dialogue playback, and game state (flags and attributes).
-* **`content/`** — Your game data: JSON maps, tile definitions, character spritesheets, animation manifests, dialogue stories, and rule presets.
-* **`tools/`** — Built-in creation tools:
-  * **Map Editor (`tools/editor/`)** — Paint and erase tiles directly inside the running app.
-  * **Anim8tor (`tools/anim8tor/`)** — An integrated animation editor for slicing spritesheets and binding them to character slots (such as `walk_down` or `idle_up`).
-  * **LoveInk (`tools/LoveInk/`)** — A Lua dialogue system integrated into the engine for branching conversations and story events.
-* **`docs/`** — Reference guides for the camera, console commands, map system, ECS architecture, and known engine issues.
-
----
-
-## Requirements & Running
-
-1. Install **LÖVE 11.x** or newer from [love2d.org](https://love2d.org/).
-2. Open a terminal in the `GP-RPG` folder and run:
+Requires **LÖVE 11.x+**:
 
 ```bash
 love .
 ```
 
-Alternatively, drag the `GP-RPG` folder onto the LÖVE executable.
+## Controls
 
----
+* **WASD** — Move | **E** — Interact | **F3** — Debug Overlay | **F11** — Fullscreen
+* **~ / ` / F1** — Developer Console (`help` for commands) | **Shift + F** — Free Camera | **Shift + Z** — Temp Zoom
 
-## Basic Controls
+## Built With
 
-### Playing
-* **WASD** — Move the character.
-* **E** — Interact with nearby tiles (such as reading signs or triggering dialogue).
-* **Shift + F** — Toggle Free Camera mode.
-* **Shift + Z** — Toggle temporary zoom override.
-* **F11** — Toggle fullscreen.
-* **Esc** — Quit (automatically saves the current map).
-
-### Developer Console
-* **~**, **`**, or **F1** — Open or close the in-game console.
-* Use **Up / Down** for command history, **Tab** to autocomplete, and **Enter** to run.
-* Type `help()` to see available commands (including `edit()`, map save/load, camera zoom, and `flag.*` commands).
-
-### Map Editor
-* **Left-Click** — Place the selected tile.
-* **Right-Click** — Erase a tile.
-* **Mouse Wheel** — Zoom in and out.
-* **Middle-Click Drag** or **Space + Left-Click Drag** — Pan around the map.
-* **0** — Fit the entire map on screen.
-
----
-
-## Current State (Honest Status)
-
-GP-RPG is under active personal development. It is not a finished, plug-and-play RPG maker yet.
-
-**What works today:**
-* Tile-based 2D maps stored as JSON, rendered with SpriteBatching.
-* An in-game map editor with map-to-map transitions and link IDs.
-* Separate camera profiles for gameplay (integer zoom steps) and editing (smooth zoom and pan).
-* Integrated Anim8tor scene for binding spritesheet frames to `content/characters/<entity>/animations.lua`.
-* Integrated LoveInk dialogue execution connected to global flags (`flag_manager.lua`).
-* Initial preset loading and validation foundation (`CoreRPG_MVP`).
-
-**What is still in progress or has known limitations:**
-* Combat, inventory, and save/load serialization for flags and attributes are not finished yet.
-* Several architectural cleanups are still pending (documented in `docs/ENGINE_HEALTH_REPORT.md`), such as a 10,000-sprite batch cap per tile texture and moving hardcoded input out of `scenes/game.lua`.
-* `tools/anim8tor/` is the engine-integrated version of Anim8tor; the standalone SUIT-based version is maintained separately.
-
----
-
-## Versioning
-
-Milestones are tracked with Git tags (`v6.0`, `v6.2`, `v6.4`, `v6.5`) on `main`.
-
----
+* **[LÖVE (Love2D)](https://love2d.org/)** — 2D game framework
+* **[anim8](https://github.com/kikito/anim8)** by kikito — Sprite animation library
+* **[json.lua](https://github.com/rxi/json.lua)** by rxi — JSON encoder/decoder
+* **[LoveInk](tools/LoveInk/README.md)** — Lua branching dialogue system
+* **[LoveMotion (Anim8tor)](tools/anim8tor/scene.lua)** — Visual spritesheet & tile animation tool
+* **[PressStart2P](fonts/PressStart2P.ttf)** — Pixel bitmap font
 
 ## License
 
-Distributed for educational and personal development use.
+MIT — see [LICENSE](LICENSE).

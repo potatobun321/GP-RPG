@@ -26,6 +26,24 @@ function Registry.add(id, componentName, data)
     end
 end
 
+function Registry.removeComponent(id, componentName)
+    local comps = Registry.entities[id]
+    if not comps or comps[componentName] == nil then return end
+
+    local token = "|" .. componentName .. "|"
+    local toRemove = {}
+    for sig, _ in pairs(Registry.queryCache) do
+        if string.find("|" .. sig .. "|", token, 1, true) then
+            table.insert(toRemove, sig)
+        end
+    end
+    for _, sig in ipairs(toRemove) do
+        Registry.queryCache[sig] = nil
+    end
+
+    comps[componentName] = nil
+end
+
 function Registry.remove(id)
     local comps = Registry.entities[id]
     if not comps then return end

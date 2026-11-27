@@ -30,5 +30,30 @@ function FlagManager.list()
     return FlagManager.flags
 end
 
--- Future expansion: serialize() and deserialize(data)
+function FlagManager.clear()
+    FlagManager.flags = {}
+end
+
+function FlagManager.serialize()
+    local copy = {}
+    for k, v in pairs(FlagManager.flags) do
+        local t = type(v)
+        if t == "boolean" or t == "number" or t == "string" then
+            copy[k] = v
+        end
+    end
+    return copy
+end
+
+function FlagManager.deserialize(data)
+    FlagManager.flags = {}
+    if type(data) ~= "table" then return end
+    for k, v in pairs(data) do
+        local t = type(v)
+        if t == "boolean" or t == "number" or t == "string" then
+            FlagManager.flags[k] = v
+        end
+    end
+end
+
 return FlagManager

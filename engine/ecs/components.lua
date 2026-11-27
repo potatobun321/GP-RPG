@@ -1,5 +1,5 @@
 return {
-    Transform = function(x, y, w, h) return {x=x, y=y, w=w, h=h} end,
+    Transform = function(x, y, w, h, z) return {x=x, y=y, w=w, h=h, z=z or 0} end,
     Velocity = function(dx, dy, speed) return {dx=dx or 0, dy=dy or 0, baseSpeed=speed or 100, currentSpeed=speed or 100, facing="down"} end,
     Renderable = function(type, colorKey, texture, draw_style) return {type=type, colorKey=colorKey, texture=texture, draw_style=draw_style or "fill"} end,
     PlayerInput = function() return {} end,
@@ -9,7 +9,7 @@ return {
     Animator = function(animations, current) return {animations = animations or {}, current = current or "default"} end,
     Persistent = function() return {} end,
     State = function(initial) return {current = initial or "idle"} end,
-    Collider = function(w, h) return {w=w, h=h} end,
+    Collider = function(w, h, ox, oy) return {w=w, h=h, ox=ox or 0, oy=oy or 0} end,
 
     -- Gen 7 Vocabulary Components
     Flags = function(flagsTable) return flagsTable or {} end,

@@ -6,7 +6,7 @@ local Context = require('engine.core.context')
 local UI      = require('engine.ui.init')
 
 -- ── Layout constants ──────────────────────────────────────────────────────────
-local PANEL_W     = 300   -- wider panel — prevents all text clipping
+local PANEL_W     = 340   -- wider panel — prevents all text clipping
 local POPUP_W     = 300   -- popup modal width
 local POPUP_BTN_H = 28    -- height per option row
 local POPUP_PAD   = 14    -- inner padding
@@ -14,6 +14,7 @@ local POPUP_PAD   = 14    -- inner padding
 local Editor = {
     isActive       = false,
     selectedTileId = "grass",
+    selectedComposite = "InteractiveNPC",
     animX          = nil,
     panelWidth     = PANEL_W,
     showPopup      = false,
@@ -24,6 +25,7 @@ local Editor = {
     mapOptions     = {},
     linkOptions    = {"A", "B", "C", "D", "E"},
     _cachedTileIds = nil,
+    _cachedComposites = nil,
     toolMode       = "brush",
     dragStartX     = nil,
     dragStartY     = nil,
@@ -87,6 +89,18 @@ local function rebuildTileCache()
     table.sort(Editor._cachedTileIds)
 end
 
+local function rebuildCompositeCache()
+    local PresetLoader = require('engine.core.preset_loader')
+    Editor._cachedComposites = {}
+    for name in pairs(PresetLoader.activeComposites or {}) do
+        table.insert(Editor._cachedComposites, name)
+    end
+    table.sort(Editor._cachedComposites)
+    if #Editor._cachedComposites > 0 and not PresetLoader.getComposite(Editor.selectedComposite) then
+        Editor.selectedComposite = Editor._cachedComposites[1]
+    end
+end
+
 local MapRegistry = require('engine.world.map_registry')
 
 local function rebuildMapOptions()
@@ -115,6 +129,7 @@ function Editor.toggle()
     if Editor.isActive then
         Editor.animX = love.graphics.getWidth()
         rebuildTileCache()
+        rebuildCompositeCache()
         rebuildMapOptions()
     end
 end
@@ -150,6 +165,7 @@ function Editor.update(dt, world)
             local CameraModule = require('engine.core.camera')
             if Editor.dragButton == 2 then
                 CameraModule.customBounds = nil
+                world.customBounds = nil
                 local Console = require('engine.core.console')
                 Console.log("Camera bounds cleared.", {0, 1, 0})
             else
@@ -159,6 +175,7 @@ function Editor.update(dt, world)
                     minY * world.tileSize,
                     (maxY + 1) * world.tileSize
                 }
+                world.customBounds = CameraModule.customBounds
                 local Console = require('engine.core.console')
                 Console.log("Camera bounds locked.", {0, 1, 0})
             end
@@ -225,6 +242,44 @@ function Editor.mousepressed(x, y, button, istouch, presses, world)
         local gy = math.floor(wy / world.tileSize)
         
         local fillId = button == 1 and Editor.selectedTileId or "void"
+
+        if Editor.toolMode == "entity" then
+            world.entities = world.entities or {}
+            local Console = require('engine.core.console')
+            if button == 1 then
+                local def = {
+                    character = "player",
+                    composite = Editor.selectedComposite,
+                    gx = gx,
+                    gy = gy,
+                }
+                table.insert(world.entities, def)
+                Factory.spawnMapEntity(def, world.tileSize)
+                Console.log(string.format("Placed entity [%s] at (%d, %d)", tostring(Editor.selectedComposite), gx, gy), {0.4, 0.9, 0.5})
+            elseif button == 2 then
+                local removed = 0
+                for i = #world.entities, 1, -1 do
+                    local e = world.entities[i]
+                    if e.gx == gx and e.gy == gy then
+                        table.remove(world.entities, i)
+                        removed = removed + 1
+                    end
+                end
+                for id, comps in pairs(Registry.entities) do
+                    if not comps.Persistent and comps.Transform then
+                        local egx = math.floor((comps.Transform.x + comps.Transform.w / 2) / world.tileSize)
+                        local egy = math.floor((comps.Transform.y + comps.Transform.h / 2) / world.tileSize)
+                        if egx == gx and egy == gy then
+                            Registry.remove(id)
+                        end
+                    end
+                end
+                if removed > 0 then
+                    Console.log(string.format("Removed %d entity(s) at (%d, %d)", removed, gx, gy), {1, 0.7, 0.3})
+                end
+            end
+            return true
+        end
 
         if Editor.toolMode == "area" or Editor.toolMode == "cbounds" then
             if Editor.toolMode == "area" and fillId == "scene" then
@@ -307,6 +362,13 @@ function Editor.draw(world)
             love.graphics.translate(sw/2, sh/2)
             love.graphics.scale(Camera.scale)
             love.graphics.translate(-Camera.x, -Camera.y)
+
+            if Camera.customBounds then
+                local cb = Camera.customBounds
+                love.graphics.setColor(0, 1, 1, 0.55)
+                love.graphics.setLineWidth(2 / Camera.scale)
+                love.graphics.rectangle("line", cb[1], cb[3], cb[2] - cb[1], cb[4] - cb[3])
+            end
             
             if (Editor.toolMode == "area" or Editor.toolMode == "cbounds") and Editor.dragStartX and Editor.dragStartY then
                 local minX = math.min(Editor.dragStartX, gx)
@@ -380,17 +442,39 @@ function Editor.draw(world)
     love.graphics.line(Editor.animX, 0, Editor.animX, sh)
     love.graphics.setLineWidth(1)
 
-    -- ── Section header: MAP EDITOR ────────────────────────────────────────────
+    -- ── Section header ────────────────────────────────────────────────────────
     love.graphics.setColor(0.95, 0.95, 0.95, 1)
-    love.graphics.print("MAP EDITOR", Editor.animX + 16, 16)
+    local headerText = (Editor.toolMode == "entity") and "MAP EDITOR (ENTITIES)" or "MAP EDITOR"
+    love.graphics.print(headerText, Editor.animX + 16, 16)
 
     -- Thin separator under header
     love.graphics.setColor(0.3, 0.3, 0.3, 1)
     love.graphics.rectangle("fill", Editor.animX + 16, 38, Editor.panelWidth - 32, 1)
 
-    -- ── Tile list ─────────────────────────────────────────────────────────────
-    local tileIds = Editor._cachedTileIds or {}
+    -- ── Palette list (Composites in entity mode, Tiles otherwise) ─────────────
     local y = 50
+    if Editor.toolMode == "entity" then
+        local comps = Editor._cachedComposites or {}
+        for _, name in ipairs(comps) do
+            local rowX = Editor.animX + 12
+            local rowW = Editor.panelWidth - 24
+            if UI.Button("comp_" .. name, "", rowX, y - 4, rowW, 30) then
+                Editor.selectedComposite = name
+            end
+            if Editor.selectedComposite == name then
+                love.graphics.setColor(0.4, 0.9, 0.5, 1)
+                love.graphics.setLineWidth(2)
+                love.graphics.rectangle("line", rowX, y - 4, rowW, 30)
+                love.graphics.setLineWidth(1)
+                love.graphics.setColor(0.95, 0.95, 0.95, 1)
+            else
+                love.graphics.setColor(0.7, 0.7, 0.7, 1)
+            end
+            love.graphics.print(name, rowX + 12, y + 5)
+            y = y + 34
+        end
+    else
+    local tileIds = Editor._cachedTileIds or {}
     for _, id in ipairs(tileIds) do
         local def    = Factory.tiles[id]
         local rowX   = Editor.animX + 12
@@ -431,19 +515,22 @@ function Editor.draw(world)
         else
             love.graphics.setColor(0.7, 0.7, 0.7, 1)
         end
+        love.graphics.setScissor(rowX, y - 4, rowW - 6, 30)
         love.graphics.print(def.name .. " [" .. id .. "]", rowX + 34, y + 5)
+        love.graphics.setScissor()
 
         y = y + 34
     end
+    end
 
-    -- Top center toolbar (Undo / Area / Cbounds / Redo)
+    -- Top center toolbar (Undo / Area / Cbounds / Entity / Redo)
     if Editor.isActive or Editor.animX < love.graphics.getWidth() - 1 then
         local progress = (love.graphics.getWidth() - Editor.animX) / Editor.panelWidth
         if progress > 0 then
             local menuY = -60 + 70 * progress
-            local bw = 80
-            local pad = 10
-            local totalW = 4 * bw + 3 * pad
+            local bw = 96
+            local pad = 8
+            local totalW = 5 * bw + 4 * pad
             local startX = math.floor(sw / 2 - totalW / 2)
             
             if UI.Button("btn_undo", "UNDO", startX, menuY, bw, 32) then
@@ -465,8 +552,16 @@ function Editor.draw(world)
             if UI.Button("btn_cbounds", "CBOUNDS", startX + 2*bw + 2*pad, menuY, bw, 32) then
                 Editor.toolMode = Editor.toolMode == "cbounds" and "brush" or "cbounds"
             end
+
+            if Editor.toolMode == "entity" then
+                love.graphics.setColor(0.4, 0.9, 0.5, 1)
+                love.graphics.rectangle("fill", startX + 3*bw + 3*pad - 2, menuY - 2, bw + 4, 32 + 4)
+            end
+            if UI.Button("btn_entity", "ENTITY", startX + 3*bw + 3*pad, menuY, bw, 32) then
+                Editor.toolMode = Editor.toolMode == "entity" and "brush" or "entity"
+            end
             
-            if UI.Button("btn_redo", "REDO", startX + 3*bw + 3*pad, menuY, bw, 32) then
+            if UI.Button("btn_redo", "REDO", startX + 4*bw + 4*pad, menuY, bw, 32) then
                 Editor.redo(world)
             end
         end
