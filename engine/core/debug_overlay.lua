@@ -59,6 +59,10 @@ function DebugOverlay.drawWorld(world)
                 local cy = t.y + (c.oy or 0)
                 love.graphics.setColor(0.2, 1.0, 0.4, 0.9)
                 love.graphics.rectangle("line", cx, cy, c.w, c.h)
+                if c.r and c.r > 0 then
+                    love.graphics.setColor(0.2, 0.85, 1.0, 0.85)
+                    love.graphics.circle("line", t.x + (c.rox or t.w / 2), t.y + (c.roy or t.h / 2), c.r)
+                end
             end
         end
     end

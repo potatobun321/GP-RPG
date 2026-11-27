@@ -75,15 +75,19 @@ end
 function AnimatorScene:mousepressed(x, y, button, istouch, presses)
     if x > 320 and x < state.screenW - 320 then
         viewport.mousepressed(x, y, button)
+    elseif x >= state.screenW - 320 then
+        ui_right.mousepressed(x, y, button)
     end
 end
 
 function AnimatorScene:mousereleased(x, y, button, istouch, presses)
     viewport.mousereleased(x, y, button)
+    ui_right.mousereleased(x, y, button)
 end
 
 function AnimatorScene:mousemoved(x, y, dx, dy, istouch)
     viewport.mousemoved(x, y, dx, dy)
+    ui_right.mousemoved(x, y, dx, dy)
 end
 
 function AnimatorScene:wheelmoved(x, y)

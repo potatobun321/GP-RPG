@@ -259,4 +259,8 @@ function Game:mousemoved(x, y, dx, dy, istouch)
     self.layers:dispatch("mousemoved", x, y, dx, dy, istouch)
 end
 
+function Game:resize(w, h)
+    StoryManager.resize(w, h)
+end
+
 return Game

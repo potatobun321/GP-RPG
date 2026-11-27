@@ -85,3 +85,8 @@ function love.filedropped(file)
     local s = Context.scene
     if s and s.filedropped then s:filedropped(file) end
 end
+
+function love.resize(w, h)
+    local s = Context.scene
+    if s and s.resize then s:resize(w, h) end
+end

@@ -87,12 +87,14 @@ function AnimationManager.load(entityType)
     image:setFilter("nearest", "nearest")
 
     -- Prefer unified manifest
-    local anims
+    local anims, collider, radius
     local manifestPath = "content.characters." .. entityType .. ".animations"
     local ok, manifest = pcall(require, manifestPath)
     if ok and type(manifest) == "table" and manifest.animations then
         print("[AnimationManager] Loading from unified manifest: " .. entityType)
-        anims = loadFromManifest(manifest, image)
+        anims    = loadFromManifest(manifest, image)
+        collider = manifest.collider
+        radius   = manifest.radius
     else
         -- Fallback to legacy individual files
         print("[AnimationManager] Loading legacy individual files: " .. entityType)
@@ -107,7 +109,7 @@ function AnimationManager.load(entityType)
         bindings = b
     end
 
-    local animData = { image = image, anims = anims, bindings = bindings }
+    local animData = { image = image, anims = anims, bindings = bindings, collider = collider, radius = radius }
     AnimationManager.cache[entityType] = animData
     return animData
 end

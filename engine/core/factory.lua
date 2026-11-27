@@ -110,13 +110,35 @@ function Factory.createCharacterEntity(px, py, typeId)
     end
     
     local tex = animData and animData.image or tpl.texture
-    Registry.add(id, "Renderable", Components.Renderable("character", tpl.colorKey, tex, tpl.draw_style))
+    local rend = Components.Renderable("character", tpl.colorKey, tex, tpl.draw_style)
+    rend.characterType = typeId
+    Registry.add(id, "Renderable", rend)
     
     Registry.add(id, "Health", Components.Health(100, 100))
     Registry.add(id, "CharacterStats", Components.CharacterStats({atk=10, def=10, endr=10, int=10}))
     Registry.add(id, "Persistent", Components.Persistent())
     Registry.add(id, "State", Components.State("idle"))
-    Registry.add(id, "Collider", Components.Collider(16, 12, 4, 12))
+
+    local cw, ch, cox, coy = 16, 12, 4, 12
+    local cr, crox, croy = nil, nil, nil
+    if animData and animData.collider then
+        local c = animData.collider
+        local sx = 24 / (c.baseW or 32)
+        local sy = 24 / (c.baseH or 32)
+        cw  = math.max(1, math.floor((c.w  or 16) * sx + 0.5))
+        ch  = math.max(1, math.floor((c.h  or 12) * sy + 0.5))
+        cox = math.floor((c.ox or 0) * sx + 0.5)
+        coy = math.floor((c.oy or 0) * sy + 0.5)
+    end
+    if animData and animData.radius then
+        local r = animData.radius
+        local sx = 24 / (r.baseW or 32)
+        local sy = 24 / (r.baseH or 32)
+        cr   = math.max(1, math.floor((r.r or 16) * math.min(sx, sy) + 0.5))
+        crox = math.floor((r.ox or 16) * sx + 0.5)
+        croy = math.floor((r.oy or 16) * sy + 0.5)
+    end
+    Registry.add(id, "Collider", Components.Collider(cw, ch, cox, coy, cr, crox, croy))
     
     return id
 end
@@ -199,6 +221,56 @@ function Factory.spawnMapEntity(def, tileSize)
     end
 
     return id
+end
+
+function Factory.refreshCharacters(typeId)
+    local AnimationManager = require('engine.core.animation')
+    local animData = AnimationManager.load(typeId)
+    if not animData then return end
+
+    for _, comps in pairs(Registry.entities) do
+        local r = comps.Renderable
+        if r and r.type == "character" and r.characterType == typeId then
+            r.texture = animData.image
+            r.scaleX = nil
+            r.scaleY = nil
+
+            if comps.Animator and animData.anims then
+                local cloned = {}
+                for k, v in pairs(animData.anims) do cloned[k] = v:clone() end
+                comps.Animator.animations = cloned
+                if not cloned[comps.Animator.current] then
+                    comps.Animator.current = cloned["idle"] and "idle" or next(cloned)
+                end
+            end
+
+            if comps.Collider then
+                local t = comps.Transform
+                local tw = (t and t.w) or 24
+                local th = (t and t.h) or 24
+                local c = comps.Collider
+                if animData.collider then
+                    local ac = animData.collider
+                    local sx = tw / (ac.baseW or 32)
+                    local sy = th / (ac.baseH or 32)
+                    c.w  = math.max(1, math.floor((ac.w  or 16) * sx + 0.5))
+                    c.h  = math.max(1, math.floor((ac.h  or 12) * sy + 0.5))
+                    c.ox = math.floor((ac.ox or 0) * sx + 0.5)
+                    c.oy = math.floor((ac.oy or 0) * sy + 0.5)
+                end
+                if animData.radius then
+                    local ar = animData.radius
+                    local sx = tw / (ar.baseW or 32)
+                    local sy = th / (ar.baseH or 32)
+                    c.r   = math.max(1, math.floor((ar.r or 16) * math.min(sx, sy) + 0.5))
+                    c.rox = math.floor((ar.ox or 16) * sx + 0.5)
+                    c.roy = math.floor((ar.oy or 16) * sy + 0.5)
+                else
+                    c.r, c.rox, c.roy = nil, nil, nil
+                end
+            end
+        end
+    end
 end
 
 return Factory

@@ -9,7 +9,7 @@ return {
     Animator = function(animations, current) return {animations = animations or {}, current = current or "default"} end,
     Persistent = function() return {} end,
     State = function(initial) return {current = initial or "idle"} end,
-    Collider = function(w, h, ox, oy) return {w=w, h=h, ox=ox or 0, oy=oy or 0} end,
+    Collider = function(w, h, ox, oy, r, rox, roy) return {w=w, h=h, ox=ox or 0, oy=oy or 0, r=r, rox=rox, roy=roy} end,
 
     -- Gen 7 Vocabulary Components
     Flags = function(flagsTable) return flagsTable or {} end,

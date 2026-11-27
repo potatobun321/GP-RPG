@@ -61,6 +61,24 @@ function StoryManager.init()
     end
 end
 
+function StoryManager.resize(w, h)
+    if not StoryManager.ui then return end
+    w = w or love.graphics.getWidth()
+    h = h or love.graphics.getHeight()
+    local tb = StoryManager.ui.textbox
+    if tb then
+        tb.x = 20
+        tb.y = h - 140
+        tb.width = w - 40
+    end
+    local cl = StoryManager.ui.choicelist
+    if cl then
+        cl.x = 50
+        cl.y = h - 250
+        cl.width = w - 100
+    end
+end
+
 function StoryManager.startStory(storyPathOrData, startKnot)
     local storyData
     if type(storyPathOrData) == "string" then
@@ -80,6 +98,7 @@ function StoryManager.startStory(storyPathOrData, startKnot)
     -- Attach GP-RPG State
     LoveInkAdapter.attach(StoryManager.activeDialogue)
     
+    StoryManager.resize(love.graphics.getDimensions())
     StoryManager.currentContent = StoryManager.activeDialogue:getNext()
     StoryManager.processTags(StoryManager.currentContent)
     StoryManager.ui:showContent(StoryManager.currentContent)
@@ -123,7 +142,8 @@ function StoryManager.mousepressed(x, y, button)
         
         if StoryManager.currentContent and StoryManager.currentContent.type == "text" then
             if StoryManager.ui:isTextComplete() then
-                StoryManager.currentContent = StoryManager.activeDialogue:getNext()
+                StoryManager.resize(love.graphics.getDimensions())
+    StoryManager.currentContent = StoryManager.activeDialogue:getNext()
                 if StoryManager.currentContent and StoryManager.currentContent.type == "end" then
                     StoryManager.activeDialogue = nil
                     StoryManager.currentContent = nil
@@ -146,7 +166,8 @@ function StoryManager.keypressed(key)
     if key == "e" or key == "space" or key == "return" then
         if StoryManager.currentContent and StoryManager.currentContent.type == "text" then
             if StoryManager.ui:isTextComplete() then
-                StoryManager.currentContent = StoryManager.activeDialogue:getNext()
+                StoryManager.resize(love.graphics.getDimensions())
+    StoryManager.currentContent = StoryManager.activeDialogue:getNext()
                 if StoryManager.currentContent and StoryManager.currentContent.type == "end" then
                     StoryManager.activeDialogue = nil
                     StoryManager.currentContent = nil

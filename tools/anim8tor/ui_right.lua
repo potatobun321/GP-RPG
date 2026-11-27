@@ -1,5 +1,5 @@
 -- tools/anim8tor/ui_right.lua
--- Right panel: animation preview + playback controls (top) + binding slot list & export (bottom).
+-- Right panel: animation preview + playback + hitbox/radius editor (top) + binding slots & export (bottom).
 
 local state    = require('tools.anim8tor.state')
 local viewport = require('tools.anim8tor.viewport')
@@ -25,6 +25,73 @@ local function panelX() return state.screenW - PANEL_W end
 
 local function listStartY()
     return math.floor(state.screenH * 0.5) + PAD + 38
+end
+
+local function getPreviewRect()
+    local px    = panelX()
+    local divY  = math.floor(state.screenH * 0.5)
+    local prevW = PANEL_W - PAD * 2
+    local prevY = PAD + 26
+    local ctrlH = 26
+    local prevH = divY - prevY - ctrlH - PAD - 8
+
+    local fw = tonumber(state.inputState.frameWidth.text)  or 32
+    local fh = tonumber(state.inputState.frameHeight.text) or 32
+    local sc = math.min((prevW - 8) / fw, (prevH - 8) / fh)
+    if sc > 1 then sc = math.floor(sc) end
+    local dw = fw * sc
+    local dh = fh * sc
+    local dx = px + PAD + (prevW / 2) - (dw / 2)
+    local dy = prevY + (prevH / 2) - (dh / 2)
+    return dx, dy, dw, dh, sc, fw, fh, prevY, prevH
+end
+
+local function screenToFramePixel(mx, my)
+    local dx, dy, _, _, sc, fw, fh = getPreviewRect()
+    local fx = math.max(0, math.min(fw, math.floor((mx - dx) / sc + 0.5)))
+    local fy = math.max(0, math.min(fh, math.floor((my - dy) / sc + 0.5)))
+    return fx, fy, fw, fh
+end
+
+function ui_right.mousepressed(x, y, button)
+    if state.targetMode == "tile" or state.hitboxEditMode == "view" then return end
+    if not state.image or not state.animation then return end
+
+    local dx, dy, dw, dh = getPreviewRect()
+    if x < dx or x > dx + dw or y < dy or y > dy + dh then return end
+
+    local fx, fy, fw, fh = screenToFramePixel(x, y)
+    if button == 1 then
+        if state.hitboxEditMode == "box" then
+            state.previewDrag = { kind = "box", sx = fx, sy = fy, fw = fw, fh = fh }
+            state.collider = { ox = fx, oy = fy, w = 1, h = 1, baseW = fw, baseH = fh }
+        elseif state.hitboxEditMode == "radius" then
+            state.previewDrag = { kind = "radius", sx = fx, sy = fy, fw = fw, fh = fh }
+            state.radius = { ox = fx, oy = fy, r = 1, baseW = fw, baseH = fh }
+        end
+    end
+end
+
+function ui_right.mousemoved(x, y, dx, dy)
+    if not state.previewDrag then return end
+    local fx, fy, fw, fh = screenToFramePixel(x, y)
+    local d = state.previewDrag
+    if d.kind == "box" then
+        local ox = math.min(d.sx, fx)
+        local oy = math.min(d.sy, fy)
+        local w  = math.max(1, math.abs(fx - d.sx))
+        local h  = math.max(1, math.abs(fy - d.sy))
+        state.collider = { ox = ox, oy = oy, w = w, h = h, baseW = fw, baseH = fh }
+    elseif d.kind == "radius" then
+        local r = math.max(1, math.floor(math.sqrt((fx - d.sx)^2 + (fy - d.sy)^2) + 0.5))
+        state.radius = { ox = d.sx, oy = d.sy, r = r, baseW = fw, baseH = fh }
+    end
+end
+
+function ui_right.mousereleased(x, y, button)
+    if button == 1 and state.previewDrag then
+        state.previewDrag = nil
+    end
 end
 
 function ui_right.update()
@@ -65,14 +132,31 @@ function ui_right.draw()
     love.graphics.line(px, 0, px, state.screenH)
     love.graphics.setLineWidth(1)
 
-    -- TOP HALF: PREVIEW
+    -- TOP HALF: PREVIEW + HITBOX/RADIUS CONTROLS
     if state.font then love.graphics.setFont(state.font) end
     love.graphics.setColor(0.75, 0.75, 0.85)
     love.graphics.print("PREVIEW", px + PAD, PAD)
 
-    local prevY = PAD + 26
-    local ctrlH = 26
-    local prevH = divY - prevY - ctrlH - PAD - 8
+    if state.targetMode ~= "tile" then
+        local modeLabels = { view = "HB: VIEW", box = "HB: BOX", radius = "HB: RAD" }
+        local nextMode   = { view = "box", box = "radius", radius = "view" }
+        local hbTxt = modeLabels[state.hitboxEditMode or "view"] or "HB: VIEW"
+        if UI.Button("btn_hb_mode", hbTxt, px + PANEL_W - PAD - 122, PAD - 3, 76, 22) then
+            state.hitboxEditMode = nextMode[state.hitboxEditMode or "view"] or "view"
+        end
+        if UI.Button("btn_hb_clr", "CLR", px + PANEL_W - PAD - 42, PAD - 3, 42, 22) then
+            if state.hitboxEditMode == "radius" then
+                state.radius = nil
+            elseif state.hitboxEditMode == "box" then
+                state.collider = nil
+            else
+                state.collider = nil
+                state.radius = nil
+            end
+        end
+    end
+
+    local dx, dy, dw, dh, sc, fw, fh, prevY, prevH = getPreviewRect()
     local bx, by, bw, bh = px + PAD, prevY, prevW, prevH
 
     love.graphics.setColor(0.15, 0.15, 0.15)
@@ -89,20 +173,35 @@ function ui_right.draw()
             px + PAD + 6, prevY + 6, prevW - 12, "left")
 
     elseif state.animation and state.image then
-        local fw = tonumber(state.inputState.frameWidth.text)  or 32
-        local fh = tonumber(state.inputState.frameHeight.text) or 32
-        local sc = math.min((prevW - 8) / fw, (prevH - 8) / fh)
-        if sc > 1 then sc = math.floor(sc) end
-        local dw = fw * sc
-        local dh = fh * sc
-        local dx = px + PAD + (prevW / 2) - (dw / 2)
-        local dy = prevY + (prevH / 2) - (dh / 2)
         viewport.drawCheckerboard(dx, dy, dw, dh, 16)
         love.graphics.setColor(1, 1, 1)
         local sx = state.flipH and -sc or sc
         local ox = state.flipH and fw or 0
         state.animation:draw(state.image, dx, dy, 0, sx, sc, ox, 0)
 
+        -- Preview existing / edited Collider & Radius
+        if state.targetMode ~= "tile" and state.showHitboxPreview then
+            if state.collider then
+                local c = state.collider
+                local cox = state.flipH and (fw - c.ox - c.w) or c.ox
+                love.graphics.setColor(0.2, 1.0, 0.4, 0.25)
+                love.graphics.rectangle("fill", dx + cox * sc, dy + c.oy * sc, c.w * sc, c.h * sc)
+                love.graphics.setColor(0.2, 1.0, 0.4, 0.95)
+                love.graphics.setLineWidth(2)
+                love.graphics.rectangle("line", dx + cox * sc, dy + c.oy * sc, c.w * sc, c.h * sc)
+                love.graphics.setLineWidth(1)
+            end
+            if state.radius then
+                local r = state.radius
+                local rox = state.flipH and (fw - r.ox) or r.ox
+                love.graphics.setColor(0.2, 0.85, 1.0, 0.15)
+                love.graphics.circle("fill", dx + rox * sc, dy + r.oy * sc, r.r * sc)
+                love.graphics.setColor(0.2, 0.85, 1.0, 0.95)
+                love.graphics.setLineWidth(2)
+                love.graphics.circle("line", dx + rox * sc, dy + r.oy * sc, r.r * sc)
+                love.graphics.setLineWidth(1)
+            end
+        end
     else
         love.graphics.setColor(0.38, 0.38, 0.43)
         if state.fontSmall then love.graphics.setFont(state.fontSmall) end
@@ -111,6 +210,7 @@ function ui_right.draw()
     end
 
     -- Playback controls row below preview box
+    local ctrlH = 26
     local ctrlY = divY - ctrlH - 8
     local cbw = math.floor((prevW - 12) / 4)
     if UI.Button("btn_prev_f", "<", px + PAD, ctrlY, cbw, ctrlH) then
@@ -130,9 +230,9 @@ function ui_right.draw()
 
     -- Center TRY SAMPLE button when no image is loaded
     if not state.image then
-        local sx = state.screenW / 2 - 75
-        local sy = state.screenH / 2 + 148
-        if UI.Button("btn_sample", "TRY SAMPLE", sx, sy, 150, 30) then
+        local tryX = state.screenW / 2 - 75
+        local tryY = state.screenH / 2 + 148
+        if UI.Button("btn_sample", "TRY SAMPLE", tryX, tryY, 150, 30) then
             logic.loadSample()
         end
     end

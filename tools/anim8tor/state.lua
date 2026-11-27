@@ -35,6 +35,12 @@ local state = {
     savedSlots = {},
     bindings = {},
 
+    hitboxEditMode = "view", -- "view", "box", or "radius"
+    showHitboxPreview = true,
+    collider = nil,          -- { ox, oy, w, h, baseW, baseH }
+    radius = nil,            -- { ox, oy, r, baseW, baseH }
+    previewDrag = nil,
+
     inputState = {
         frameWidth = {text = "64"},
         frameHeight = {text = "64"},

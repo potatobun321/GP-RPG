@@ -136,17 +136,20 @@ function ui_left.draw()
 
     local modeLabel = (state.targetMode == "tile") and "MODE: TILE" or "MODE: CHARACTER"
     if UI.Button("btn_mode", modeLabel, pad, 404, fullW, 28) then
+        local Factory = require('engine.core.factory')
+        local cur = state.inputState.entityType.text
         if state.targetMode == "tile" then
             state.targetMode = "character"
-            if state.inputState.entityType.text == "water" then
-                state.inputState.entityType.text = "player"
+            if not Factory.characters[cur] then
+                state.inputState.entityType.text = Factory.characters["player"] and "player" or (next(Factory.characters) or "player")
             end
         else
             state.targetMode = "tile"
-            if state.inputState.entityType.text == "player" then
-                state.inputState.entityType.text = "water"
+            if not Factory.tiles[cur] then
+                state.inputState.entityType.text = Factory.tiles["water"] and "water" or (next(Factory.tiles) or "water")
             end
         end
+        logic.loadCurrentAsset()
     end
 
     local targetLabel = (state.targetMode == "tile") and "Tile ID" or "Entity"
