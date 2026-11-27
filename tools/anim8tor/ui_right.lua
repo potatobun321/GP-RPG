@@ -226,6 +226,7 @@ function ui_right.draw()
     local flipLabel = state.flipH and "FLIP*" or "FLIP"
     if UI.Button("btn_flip", flipLabel, px + PAD + (cbw + 4) * 3, ctrlY, cbw, ctrlH) then
         state.flipH = not state.flipH
+        logic.createAnimation()
     end
 
     -- Center TRY SAMPLE button when no image is loaded

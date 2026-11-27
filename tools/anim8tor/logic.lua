@@ -88,8 +88,10 @@ function logic.selectBindingSlot(slotName)
         state.inputState.top.text         = tostring(slot.top or 0)
         state.inputState.border.text      = tostring(slot.border or 0)
         state.inputState.duration.text    = tostring(slot.duration or 0.1)
+        state.flipH = (slot.flipH == true)
         state.selectedFrames = parseFramesString(slot.frames)
     else
+        state.flipH = false
         state.selectedFrames = {}
     end
     logic.updateGrid()
@@ -361,6 +363,7 @@ function logic.createAnimation()
         border   = tonumber(state.inputState.border.text) or 0,
         frames   = table.concat(framesStrArgs, ", "),
         duration = dur,
+        flipH    = state.flipH or false,
     }
 
     local imgName = "spritesheet" .. (state.fileExt or ".png")
@@ -429,11 +432,12 @@ local function writeManifest(exportDir, entity, allSlots, collider, radius)
     table.insert(lines, "")
     table.insert(lines, "    animations = {")
     for name, def in pairs(allSlots) do
+        local flipPart = def.flipH and ", flipH=true" or ""
         table.insert(lines, string.format(
-            "        %-12s= { frameW=%d, frameH=%d, left=%d, top=%d, border=%d, frames=\"%s\", duration=%s },",
+            "        %-12s= { frameW=%d, frameH=%d, left=%d, top=%d, border=%d, frames=\"%s\", duration=%s%s },",
             name .. " ",
             def.frameW, def.frameH, def.left, def.top, def.border,
-            def.frames, tostring(def.duration)
+            def.frames, tostring(def.duration), flipPart
         ))
     end
     table.insert(lines, "    },")
@@ -561,8 +565,11 @@ function logic.bindAndSave()
 
     local baseDir   = love.filesystem.getSource()
     local exportDir = baseDir .. "/content/characters/" .. entity
-    os.execute('mkdir "' .. exportDir:gsub("/", "\\") .. '" 2>nul')
-    os.execute('mkdir -p "' .. exportDir .. '" 2>/dev/null')
+    if love.system.getOS() == "Windows" then
+        os.execute('mkdir "' .. exportDir:gsub("/", "\\") .. '" 2>nul')
+    else
+        os.execute('mkdir -p "' .. exportDir .. '" 2>/dev/null')
+    end
 
     if state.fileData then
         local f2 = io.open(exportDir .. "/spritesheet.png", "wb")
@@ -574,6 +581,8 @@ function logic.bindAndSave()
 
     local slots = readManifestSlots(exportDir)
     slots[template] = state.generatedFrameData
+    state.bindings = state.bindings or {}
+    state.bindings[template] = state.generatedFrameData
 
     local ok, err = writeManifest(exportDir, entity, slots, state.collider, state.radius)
     if not ok then

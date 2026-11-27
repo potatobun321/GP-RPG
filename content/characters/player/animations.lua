@@ -3,19 +3,19 @@
 
 return {
     spritesheet = "content/characters/player/spritesheet.png",
-    collider    = { ox=19, oy=27, w=23, h=33, baseW=64, baseH=64 },
-    radius      = { ox=31, oy=43, r=20, baseW=64, baseH=64 },
+    collider    = { ox=18, oy=26, w=12, h=22, baseW=48, baseH=48 },
+    radius      = { ox=23, oy=34, r=10, baseW=48, baseH=48 },
 
     animations = {
-        idle_down   = { frameW=64, frameH=64, left=0, top=0, border=0, frames="1,1", duration=0.1 },
-        idle_up     = { frameW=64, frameH=64, left=0, top=0, border=0, frames="1,4", duration=0.1 },
-        idle_left   = { frameW=64, frameH=64, left=0, top=0, border=0, frames="1,2", duration=0.1 },
-        idle_right  = { frameW=64, frameH=64, left=0, top=0, border=0, frames="1,3", duration=0.1 },
+        default     = { frameW=48, frameH=48, left=0, top=0, border=0, frames="1,4, 3,4", duration=0.1 },
+        idle_down   = { frameW=48, frameH=48, left=0, top=0, border=0, frames="3,1", duration=0.1 },
+        idle_left   = { frameW=48, frameH=48, left=0, top=0, border=0, frames="1,2", duration=0.1, flipH=true },
+        idle_right  = { frameW=48, frameH=48, left=0, top=0, border=0, frames="1,2", duration=0.1 },
         hurt        = { frameW=64, frameH=64, left=0, top=0, border=0, frames="1,2, 2,2, 3,2, 4,2", duration=0.1 },
-        walk_down   = { frameW=64, frameH=64, left=0, top=0, border=0, frames="1,1, 2,1, 3,1, 4,1", duration=0.1 },
-        default     = { frameW=64, frameH=64, left=0, top=0, border=0, frames="1,1", duration=0.1 },
-        walk_up     = { frameW=64, frameH=64, left=0, top=0, border=0, frames="1,4, 2,4, 3,4, 4,4", duration=0.1 },
-        walk_left   = { frameW=64, frameH=64, left=0, top=0, border=0, frames="1,2, 2,2, 3,2, 4,2", duration=0.1 },
-        walk_right  = { frameW=64, frameH=64, left=0, top=0, border=0, frames="1,3, 2,3, 3,3, 4,3", duration=0.1 },
+        idle_up     = { frameW=48, frameH=48, left=0, top=0, border=0, frames="1,5", duration=0.1 },
+        walk_down   = { frameW=48, frameH=48, left=0, top=0, border=0, frames="1,1, 2,1, 3,1, 4,1", duration=0.1 },
+        walk_up     = { frameW=48, frameH=48, left=0, top=0, border=0, frames="1,5, 2,5, 3,5, 4,5", duration=0.1 },
+        walk_left   = { frameW=48, frameH=48, left=0, top=0, border=0, frames="4,2, 3,2, 2,2, 1,2", duration=0.1, flipH=true },
+        walk_right  = { frameW=48, frameH=48, left=0, top=0, border=0, frames="1,3, 2,3, 3,3, 4,3", duration=0.1 },
     },
 }

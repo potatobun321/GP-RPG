@@ -43,6 +43,7 @@ local function loadFromManifest(manifest, image)
                 return anim8.newAnimation(g(unpack(coords)), def.duration or 0.1)
             end)
             if ok2 then
+                if def.flipH and anim.flipH then anim:flipH() end
                 anims[name] = anim
             else
                 print("[AnimationManager] Anim error for '" .. name .. "': " .. tostring(anim))
